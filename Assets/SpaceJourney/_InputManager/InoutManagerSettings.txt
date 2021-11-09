@@ -1,0 +1,3 @@
+Replace InoutManager.asset to setup your Input Settings with Space Ship Controller correctly.
+
+ProjectName->Project Settings->InoutManager.asset

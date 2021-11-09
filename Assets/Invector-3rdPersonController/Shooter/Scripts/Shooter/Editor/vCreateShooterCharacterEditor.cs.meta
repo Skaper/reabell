@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 19f72d8f3c7590945a266972068afe21
+timeCreated: 1565059829
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences:
+  - controller: {fileID: 9100000, guid: 87885946b43e2d1449e1d5aa2042f8a8, type: 2}
+  - cameraListData: {fileID: 11400000, guid: 8616a8d80006bfb4d9069ea692c278da, type: 2}
+  - hud: {fileID: 100834, guid: 65d09cff7cef67d47a9d1f9a022f2d84, type: 2}
+  - aimCanvas: {fileID: 100756, guid: 041726e4330290b43ac95e1cf84d3636, type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
