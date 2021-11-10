@@ -1,19 +1,12 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-namespace CMF
+namespace GravityFlipper
 {
     public class GravityFlip : MonoBehaviour
     {
-        //This script rotates all gameobjects around z axis at targetAngle
-
-        public float targetAngle = 0f;
         public GravityTunnel gravityTunnel;
 
-        public bool smoothRotation = false;
-        public float smoothRotationSpeed = 35f;
-
-        
         public Vector3 gravity = new Vector3(0f, -9.81f, 0f);
         public Vector3 angle = Vector3.zero;
 
@@ -31,7 +24,6 @@ namespace CMF
         {
             if (col.CompareTag("Player/GravityCollider"))
             {
-                
                 if (gravityTunnel && !gravityTunnel.isPlayerInTonnel)
                 {
                     flipGravity();
@@ -39,7 +31,7 @@ namespace CMF
                 }
             }else if (col.CompareTag("Block"))
             {
-                col.GetComponent<GravityGunIteractiveObject>().SetGravity(gravity);
+                col.GetComponent<IGravityChanged>().OnGravityChanged(gravity);
             }
         }
 
@@ -61,18 +53,9 @@ namespace CMF
             Quaternion _rotationDifference = Quaternion.FromToRotation(_transform.up, _targetDirection);
 
             //Save start and end rotation;
-            Quaternion _startRotation = _transform.rotation;
             Quaternion _endRotation = _rotationDifference * _transform.rotation;
 
-
-            if (smoothRotation)
-            {
-                _rigidbody.MoveRotation(Quaternion.RotateTowards(_rigidbody.rotation, _endRotation, smoothRotationSpeed * Time.deltaTime));
-            }
-            else
-            {
-                _rigidbody.MoveRotation(_endRotation);
-            }
+            _rigidbody.MoveRotation(_endRotation);
         }
         
         private void OnTriggerExit(Collider other)
@@ -80,7 +63,7 @@ namespace CMF
 
             if (other.CompareTag("Block") && isExitGravityZero)
             {
-                other.GetComponent<GravityGunIteractiveObject>().SetGravity(Vector3.zero);
+                other.GetComponent<IGravityChanged>().OnGravityChanged(gravity);
             }else if (other.CompareTag("Player/GravityCollider"))
             {
                 playerChengedGravity = false;

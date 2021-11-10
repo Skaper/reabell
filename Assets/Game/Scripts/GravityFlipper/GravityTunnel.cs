@@ -1,8 +1,7 @@
 ﻿using UnityEngine;
-using System.Collections;
 using System.Collections.Generic;
 
-namespace CMF
+namespace GravityFlipper
 {
     //This script rotates all gameobjects inside the attached trigger collider around a central axis (the forward axis of this gameobject);
     //In combination with a tube-shaped collider, this script can be used to let a player walk around on the inside walls of a tunnel;
@@ -31,9 +30,7 @@ namespace CMF
 
                     float angle = CalculateAngle(Vector2.up, rbPoint);
                     Vector3 gravity = new Vector3(-Mathf.Sin(angle * Mathf.Deg2Rad), Mathf.Cos(angle * Mathf.Deg2Rad), 0) * 9.81f;
-                    GravityGunIteractiveObject block = rigidbodies[i].GetComponent<GravityGunIteractiveObject>();
-                    block.SetGravity(gravity);
-
+                    rigidbodies[i].GetComponent<IGravityChanged>().OnGravityChanged(gravity);;
                 }
             }
         }
