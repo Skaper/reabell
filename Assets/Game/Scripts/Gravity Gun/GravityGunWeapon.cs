@@ -111,7 +111,6 @@ public class GravityGunWeapon : GrabbableEvents
     {
         if (hasObject)
         {
-            
             input.VibrateController(0.1f, 0.1f, 0.1f, currentGrabber.HandSide);
             if (objectIHave.tag == "Untagged")
             {
@@ -141,10 +140,12 @@ public class GravityGunWeapon : GrabbableEvents
                     DropObj();
                 }
             }
-
-
-                objectRB.velocity = GameManager.Player.GetComponent<Rigidbody>().velocity;
-            if (objectIHave == null) hasObject = false;
+            
+            objectRB.velocity = GameManager.Player.GetComponent<Rigidbody>().velocity;
+            if (objectIHave == null)
+            {
+                hasObject = false;
+            }
         }
         else
         {

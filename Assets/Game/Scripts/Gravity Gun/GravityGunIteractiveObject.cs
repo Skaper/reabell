@@ -1,55 +1,50 @@
 ﻿using UnityEngine;
 using BNG;
-public class GravityGunIteractiveObject : MonoBehaviour
-{
+using GravityFlipper;
 
-    [SerializeField]private bool isPlayerCollision = false;
+public class GravityGunIteractiveObject : MonoBehaviour, IGravityChanged
+{
+    [SerializeField] private bool _isPlayerCollision = false;
 
     public bool returnAfterFall = false;
-    private Vector3 startPosition;
-
-   
-    private Rigidbody rigidbody;
-
     public bool inGravityGun = false;
     public bool useMass = true;
     public bool useGravity = true;
-    private Vector3 oldGravity = Physics.gravity;
-    private ConstantForce constantForce;
-
     public Collider collider;
 
-    private Grabbable grabbable;
-    private bool inHand = false;
+    private Rigidbody _rigidbody;
+    private Vector3 _startPosition;
+    private Vector3 _oldGravity = Physics.gravity;
+    private ConstantForce _constantForce;
+    private Grabbable _grabbable;
+    private bool _inHand = false;
 
     public bool isCollisionStay { get; private set; }
 
-    void Start()
+    void Awake()
     {
-        startPosition = transform.position;
-        rigidbody = GetComponent<Rigidbody>();
-        constantForce = GetComponent<ConstantForce>();
-        rigidbody.useGravity = false;
+        _startPosition = transform.position;
+        _rigidbody = GetComponent<Rigidbody>();
+        _rigidbody.useGravity = false;
+        _constantForce = GetComponent<ConstantForce>();
         collider = GetComponent<Collider>();
-
-        grabbable = GetComponent<Grabbable>();
-
+        _grabbable = GetComponent<Grabbable>();
     }
 
     private void Update()
     {
-        if (grabbable)
+        if (_grabbable)
         {
-            useGravity = !grabbable.BeingHeld;
+            useGravity = !_grabbable.BeingHeld;
         }
 
         if (Vector3.Distance(transform.position, GameManager.WorldCenterPoint.transform.position) > GameManager.LevelRadius)
         {
             if (returnAfterFall)
             {
-                rigidbody.velocity = Vector3.zero;
-                rigidbody.angularVelocity = Vector3.zero;
-                transform.position = startPosition;
+                _rigidbody.velocity = Vector3.zero;
+                _rigidbody.angularVelocity = Vector3.zero;
+                transform.position = _startPosition;
             }
             else Destroy(gameObject);
         }
@@ -59,22 +54,21 @@ public class GravityGunIteractiveObject : MonoBehaviour
     {
         if (collider.CompareTag("Player") && Time.realtimeSinceStartup > 0.6f)
         {
-            isPlayerCollision = true;
-            
+            _isPlayerCollision = true;
         }
-
     }
 
     private void OnTriggerExit(Collider collider)
     {
         if (collider.CompareTag("Player"))
         {
-            isPlayerCollision = false;
+            _isPlayerCollision = false;
         }
     }
+
     public bool IsContactWithPlayer()
     {
-        return isPlayerCollision;
+        return _isPlayerCollision;
     }
 
 
@@ -102,32 +96,20 @@ public class GravityGunIteractiveObject : MonoBehaviour
 
     public void DisableGravity()
     {
-        if (constantForce.force.Equals(Vector3.zero)) return;
-        oldGravity = constantForce.force;
-        constantForce.force = Vector3.zero;
+        if (_constantForce.force.Equals(Vector3.zero)) return;
+        _oldGravity = _constantForce.force / _rigidbody.mass;
+        _constantForce.force = Vector3.zero;
         useGravity = false;
     }
 
     public void EnableGravity()
     {
-        if (constantForce.force.Equals(oldGravity)) return;
+        if (_constantForce.force.Equals(_oldGravity)) return;
         collider.enabled = true;
-        constantForce.force = oldGravity;
+        _constantForce.force = _oldGravity * _rigidbody.mass;
         useGravity = true;
     }
-
-    public void SetGravity(Vector3 value)
-    {
-        oldGravity = value;
-        if (useGravity)
-        {
-
-            constantForce.force = oldGravity * rigidbody.mass;
-
-        }
-        else constantForce.force = Vector3.zero;
-    }
-
+    
     private void OnCollisionStay(Collision collision)
     {
         isCollisionStay = true;
@@ -136,5 +118,16 @@ public class GravityGunIteractiveObject : MonoBehaviour
     private void OnCollisionExit(Collision collision)
     {
         isCollisionStay = false;
+    }
+
+    public void OnGravityChanged(Vector3 gravity)
+    {
+        var mass = _rigidbody.mass;
+        _oldGravity = gravity;
+        if (useGravity)
+        {
+            _constantForce.force = _oldGravity * mass;
+        }
+        else _constantForce.force = Vector3.zero;
     }
 }
