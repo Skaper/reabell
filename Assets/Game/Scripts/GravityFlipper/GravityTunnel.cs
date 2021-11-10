@@ -9,6 +9,8 @@ namespace GravityFlipper
         public float smoothRotationSpeed = 30f;
         public float Gravity = -9.81f;
 
+        public Transform Origin;
+
         public bool isPlayerInTonnel { private set; get; }
 
         //List of rigidbodies inside the attached trigger;
@@ -19,8 +21,11 @@ namespace GravityFlipper
             for (int i = 0; i < rigidbodies.Count; i++)
             {
                 //Calculate center position based on rigidbody position;
-                var onNormal = ((transform.position + transform.forward) - transform.position);
-                var center = Vector3.Project((rigidbodies[i].transform.position - transform.position), onNormal) + transform.position;
+                Transform targetOrigin;
+                targetOrigin = Origin != null ? Origin : transform;
+                
+                var onNormal = ((targetOrigin.position + transform.forward) - targetOrigin.position);
+                var center = Vector3.Project((rigidbodies[i].transform.position - targetOrigin.position), onNormal) + targetOrigin.position;
 
                 if (rigidbodies[i].CompareTag("Player"))
                 {
