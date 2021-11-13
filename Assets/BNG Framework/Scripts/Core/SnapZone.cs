@@ -8,9 +8,11 @@ namespace BNG {
     public class SnapZone : MonoBehaviour {
 
         [Header("Starting / Held Item")]
-        [Tooltip("The currently held item. Set this in the editor to equip on start.")]
+        [Tooltip("The currently held item. Set this in the editor to equip on Start().")]
         public Grabbable HeldItem;
 
+        [Tooltip("TSet this in the editor to equip on Start().")]
+        public Grabbable StartingItem;
 
         [Header("Options")]
         /// <summary>
@@ -20,10 +22,16 @@ namespace BNG {
         public bool CanDropItem = true;
 
         /// <summary>
-        /// If false the swap zone cannot have it's content replaced.
+        /// If false the snap zone cannot have it's content replaced.
         /// </summary>
         [Tooltip("If false the snap zone cannot have it's content replaced.")]
         public bool CanSwapItem = true;
+
+        /// <summary>
+        /// If false the item inside the snap zone may not be removed
+        /// </summary>
+        [Tooltip("If false the snap zone cannot have it's content replaced.")]
+        public bool CanRemoveItem = true;
 
         /// <summary>
         /// Multiply Item Scale times this when in snap zone.
@@ -43,6 +51,12 @@ namespace BNG {
         /// </summary>
         [Tooltip("Only snap if Grabbable was dropped maximum of X seconds ago")]
         public float MaxDropTime = 0.1f;
+
+        /// <summary>
+        /// Last Time.time this item was snapped into
+        /// </summary>
+        [HideInInspector]
+        public float LastSnapTime;
 
         [Header("Filtering")]
         /// <summary>
@@ -85,18 +99,22 @@ namespace BNG {
 
         SnapZoneOffset offset;
 
-        // Start is called before the first frame update
         void Start() {
             gZone = GetComponent<GrabbablesInTrigger>();
             _scaleTo = ScaleItem;
 
-            // Auto Equip item
-            if (HeldItem != null) {
+            // Auto Equip item by moving it into place and grabbing it
+            if(StartingItem != null) {
+                StartingItem.transform.position = transform.position;
+                GrabGrabbable(StartingItem);
+            }
+            // Can also use HeldItem (retains backwards compatibility)
+            else if (HeldItem != null) {
+                HeldItem.transform.position = transform.position;
                 GrabGrabbable(HeldItem);
             }
         }
 
-        // Update is called once per frame
         void Update() {
 
             ClosestGrabbable = getClosestGrabbable();
@@ -118,11 +136,10 @@ namespace BNG {
                 }
                 else {
                     // Scale Item while inside zone.                                            
-                    float localScale = HeldItem.OriginalScale * _scaleTo;
-                    HeldItem.transform.localScale = Vector3.Lerp(HeldItem.transform.localScale, new Vector3(localScale, localScale, localScale), Time.deltaTime * 30f);
+                    HeldItem.transform.localScale = Vector3.Lerp(HeldItem.transform.localScale, HeldItem.OriginalScale * _scaleTo, Time.deltaTime * 30f);
                     
                     // Make sure this can't be grabbed from the snap zone
-                    if(HeldItem.enabled || (disabledColliders.Count > 0 && disabledColliders[0] != null && disabledColliders[0].enabled)) {
+                    if(HeldItem.enabled || (disabledColliders != null && disabledColliders.Count > 0 && disabledColliders[0] != null && disabledColliders[0].enabled)) {
                         disableGrabbable(HeldItem);
                     }
                 }
@@ -262,10 +279,8 @@ namespace BNG {
 
             // Lock into place
             if (offset) {
-                //HeldItem.transform.localPosition = offset.LocalPositionOffset;
-                HeldItem.transform.position = transform.position;
+                HeldItem.transform.localPosition = offset.LocalPositionOffset;
                 HeldItem.transform.localEulerAngles = offset.LocalRotationOffset;
-                
             }
             else {
                 HeldItem.transform.localPosition = Vector3.zero;
@@ -289,8 +304,15 @@ namespace BNG {
             }
 
             if (SoundOnSnap) {
-                VRUtils.Instance.PlaySpatialClipAt(SoundOnSnap, transform.position, 0.75f);
+                // Only play the sound if not just starting the scene
+                if(Time.timeSinceLevelLoad > 0.1f) {
+                    VRUtils.Instance.PlaySpatialClipAt(SoundOnSnap, transform.position, 0.75f);
+                }
+
+                Debug.Log(Time.timeSinceLevelLoad);
             }
+
+            LastSnapTime = Time.time;
         }
 
         void disableGrabbable(Grabbable grab) {
@@ -306,13 +328,21 @@ namespace BNG {
             grab.enabled = false;
         }
 
+        /// <summary>
+        /// This is typically called by the GrabAction on the SnapZone
+        /// </summary>
+        /// <param name="grabber"></param>
         public void GrabEquipped(Grabber grabber) {
 
             if (grabber != null) {
                 if(HeldItem) {
 
-                    var g = HeldItem;
+                    // Not allowed to be removed
+                    if(!CanBeRemoved()) {
+                        return;
+                    }
 
+                    var g = HeldItem;
                     if(DuplicateItemOnGrab) {
 
                         ReleaseAll();
@@ -347,10 +377,20 @@ namespace BNG {
             }
         }
 
-        public void ResetHoldItemPosition()
-        {
-            HeldItem.transform.localPosition = Vector3.zero;
+        public virtual bool CanBeRemoved() {
+            // Not allowed to be removed
+            if (!CanRemoveItem) {
+                return false;
+            }
+
+            // Not a valid grab if we just snapped this item in an it's a toggle type
+            if (HeldItem.Grabtype == HoldType.Toggle && (Time.time - LastSnapTime < 0.1f)) {
+                return false;
+            }
+
+            return true;
         }
+
         /// <summary>
         /// Release  everything snapped to us
         /// </summary>
@@ -387,8 +427,10 @@ namespace BNG {
 
             // Play Unsnap sound
             if(HeldItem != null) {
-                if (SoundOnSnap) {
-                    VRUtils.Instance.PlaySpatialClipAt(SoundOnUnsnap, transform.position, 0.75f);
+                if (SoundOnUnsnap) {
+                    if (Time.timeSinceLevelLoad > 0.1f) {
+                        VRUtils.Instance.PlaySpatialClipAt(SoundOnUnsnap, transform.position, 0.75f);
+                    }
                 }
 
                 // Call event

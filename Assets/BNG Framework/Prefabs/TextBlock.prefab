@@ -55,6 +55,7 @@ MeshRenderer:
   m_MotionVectors: 1
   m_LightProbeUsage: 1
   m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -147,6 +148,7 @@ MeshRenderer:
   m_MotionVectors: 1
   m_LightProbeUsage: 1
   m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -239,6 +241,7 @@ MeshRenderer:
   m_MotionVectors: 1
   m_LightProbeUsage: 1
   m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -331,6 +334,7 @@ MeshRenderer:
   m_MotionVectors: 1
   m_LightProbeUsage: 1
   m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -423,6 +427,7 @@ MeshRenderer:
   m_MotionVectors: 1
   m_LightProbeUsage: 1
   m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -473,7 +478,6 @@ GameObject:
   - component: {fileID: 5759788175828937647}
   - component: {fileID: 5759788175828937644}
   - component: {fileID: 5759788175828937645}
-  - component: {fileID: 5759788175828937642}
   - component: {fileID: 5759788175828937643}
   m_Layer: 0
   m_Name: TextBlock
@@ -541,26 +545,49 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   BeingHeld: 0
-  RemoteGrabbable: 0
-  RemoteGrabDistance: 10
   GrabButton: 0
   Grabtype: 0
   GrabPhysics: 1
   GrabMechanic: 1
   GrabSpeed: 5
+  RemoteGrabbable: 0
+  RemoteGrabDistance: 10
   ThrowForceMultiplier: 1
   ThrowForceMultiplierAngular: 1.125
   BreakDistance: 0.5
   HideHandGraphics: 0
   ParentToHands: 1
   ParentHandModel: 0
+  SnapHandModel: 1
+  CanBeDropped: 1
+  CanBeSnappedToSnapZone: 1
+  ForceDisableKinematicOnDrop: 0
+  CustomHandPose: 0
   SecondaryGrabBehavior: 0
   OtherGrabbableMustBeGrabbed: {fileID: 0}
+  SecondaryGrabbable: {fileID: 0}
+  SecondHandLookSpeed: 40
   CollisionSpring: 3000
   CollisionSlerp: 500
-  GrabPositionOffset: {x: 0, y: 0, z: 0}
-  GrabRotationOffset: {x: 0, y: 0, z: 0}
-  MirrorOffsetForOtherHand: 1
+  CollisionLinearMotionX: 2
+  CollisionLinearMotionY: 2
+  CollisionLinearMotionZ: 2
+  CollisionAngularMotionX: 2
+  CollisionAngularMotionY: 2
+  CollisionAngularMotionZ: 2
+  ApplyCorrectiveForce: 1
+  MoveVelocityForce: 3000
+  MoveAngularVelocityForce: 90
+  LastGrabTime: 0
+  LastDropTime: 0
+  AddControllerVelocityOnDrop: 1
+  collisions: []
+  ActiveGrabPoint: {fileID: 0}
+  SecondaryLookOffset: {x: 0, y: 0, z: 0}
+  SecondaryLookAtTransform: {fileID: 0}
+  LocalOffsetTransform: {fileID: 0}
+  GrabPoints: []
+  UseCustomInspector: 1
 --- !u!65 &5759788175828937645
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -574,20 +601,6 @@ BoxCollider:
   serializedVersion: 2
   m_Size: {x: 0.5, y: 0.42440474, z: 0.037622385}
   m_Center: {x: 1.6942601e-17, y: 0.03947687, z: 0.0007199537}
---- !u!114 &5759788175828937642
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5759788175828937641}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8ae960e70a1aab44eaea6335434c405f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  HighlightOnGrabbable: 1
-  HighlightOnRemoteGrabbable: 0
 --- !u!114 &5759788175828937643
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -603,6 +616,7 @@ MonoBehaviour:
   HapticsOnValidPickup: 1
   HapticsOnValidRemotePickup: 0
   HapticsOnCollision: 0
+  HapticsOnGrab: 1
   VibrateFrequency: 0.3
   VibrateAmplitude: 0.1
   VibrateDuration: 0.1
@@ -661,6 +675,7 @@ MeshRenderer:
   m_MotionVectors: 1
   m_LightProbeUsage: 1
   m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -753,6 +768,7 @@ MeshRenderer:
   m_MotionVectors: 1
   m_LightProbeUsage: 1
   m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -838,17 +854,20 @@ PrefabInstance:
       value: '<i>Weapon Notes : </i>
 
 
-        - Weapons can be configured with infinite ammo, physical reload, or timer.
+        - Weapons can be configured with infinite
+        ammo, physical reload, or timer.
 
 
-        - Press A / X to Release Slide. Press B / Y to eject clips.
+        - Press A / X to Release Slide.
+        Press B / Y to eject clips.
 
 
-        - Ammo Capacity is 1:1 with magazine size : bullets are removed from the clip
-        for each shot.
+        - Ammo Capacity is 1:1 with magazine
+        size : bullets are removed from the clip for each shot.
 
 
-        - More to come! Next major update focuses on weapon interaction.
+        - More
+        to come! Next major update focuses on weapon interaction.
 
 '
       objectReference: {fileID: 0}

@@ -1,7 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.XR;
+using UnityEngine.InputSystem;
 
 namespace BNG {
 
@@ -11,35 +11,76 @@ namespace BNG {
         [Tooltip("Use Emulator if true and HMDIsActive is false")]
         public bool EmulatorEnabled = true;
 
-        [Header("Key Bindings : ")]
-        public KeyCode PlayerUp = KeyCode.LeftAlt;
-        public KeyCode PlayerDown = KeyCode.LeftControl;
+        [Header("Input : ")]
+        [SerializeField]
+        [Tooltip("Action set used specifically to mimic or supplement a vr setup")]
+        public InputActionAsset EmulatorActionSet;
 
-        public KeyCode RightTrigger = KeyCode.Z;
-        public KeyCode RightGrip = KeyCode.X;
-        public KeyCode RightThumbNear = KeyCode.C;
+        [Header("Player Teleportation")]
+        [Tooltip("Will set the PlayerTeleport component's ForceStraightArrow = true while the emulator is active.")]
+        public bool ForceStraightTeleportRotation = true;
 
-        public KeyCode LeftTrigger = KeyCode.V;
-        public KeyCode LeftGrip = KeyCode.B;
-        public KeyCode LeftThumbNear = KeyCode.N;
+        [Header("Move Player Up / Down")]
+        [Tooltip("If true, move the player eye offset up / down whenever PlayerUpAction / PlayerDownAction is called.")]
+        public bool AllowUpDownControls = true;
 
+        [Tooltip("Unity Input Action used to move the player up")]
+        public InputActionReference PlayerUpAction;
+
+        [Tooltip("Unity Input Action used to move the player down")]
+        public InputActionReference PlayerDownAction;
+
+        [Header("Head Look")]
+        [Tooltip("Unity Input Action used to lock the camera in game mode to look around")]
+        public InputActionReference LockCameraAction;
+
+        [Tooltip("Unity Input Action used to lock the camera in game mode to look around")]
+        public InputActionReference CameraLookAction;
+
+        [Tooltip("Multiply the CameraLookAction by this amount")]
+        public float CameraLookSensitivityX = 0.1f;
+
+        [Tooltip("Multiply the CameraLookAction by this amount")]
+        public float CameraLookSensitivityY = 0.1f;
+
+        [Tooltip("Minimum local Eulers degrees the camera can rotate")]
+        public float MinimumCameraY = -90f;
+
+        [Tooltip("Minimum local Eulers degrees the camera can rotate")]
+        public float MaximumCameraY = 90f;
+
+        [Header("Controller Emulation")]
+        [Tooltip("Unity Input Action used to mimic holding the Left Grip")]
+        public InputActionReference LeftGripAction;
+
+        [Tooltip("Unity Input Action used to mimic holding the Left Trigger")]
+        public InputActionReference LeftTriggerAction;
+
+        [Tooltip("Unity Input Action used to mimic having your thumb near a button")]
+        public InputActionReference LeftThumbNearAction;
+
+        [Tooltip("Unity Input Action used to move mimic holding the Right Grip")]
+        public InputActionReference RightGripAction;
+
+        [Tooltip("Unity Input Action used to move mimic holding the Right Grip")]
+        public InputActionReference RightTriggerAction;
+
+        [Tooltip("Unity Input Action used to mimic having your thumb near a button")]
+        public InputActionReference RightThumbNearAction;
 
         float mouseRotationX;
         float mouseRotationY;
 
-        [Header("Camera Look : ")]
-
-        public float MouseSensitivityX = 1.25f;
-        public float MouseSensitivityY = 1.25f;
-
-        public float MinimumCameraY = -90f;
-        public float MaximumCameraY = 90f;
-
         Transform mainCameraTransform;
         Transform leftControllerTranform;
         Transform rightControllerTranform;
-       
+
+        Transform leftHandAnchor;
+        Transform rightHandAnchor;
+
         BNGPlayerController player;
+        SmoothLocomotion smoothLocomotion;
+        PlayerTeleport playerTeleport;
         bool didFirstActivate = false;
 
         Grabber grabberLeft;
@@ -50,27 +91,66 @@ namespace BNG {
         [Header("Shown for Debug : ")]
         public bool HMDIsActive;
 
+        public Vector3 LeftControllerPosition = new Vector3(-0.2f, -0.2f, 0.5f);
+        public Vector3 RightControllerPosition = new Vector3(0.2f, -0.2f, 0.5f);
+
+        bool priorStraightSetting;
 
         void Start() {
-            mainCameraTransform = GameObject.Find("CameraRig").transform;
-            leftControllerTranform = GameObject.Find("LeftHandAnchor").transform;
-            rightControllerTranform = GameObject.Find("RightHandAnchor").transform;
+
+            if(GameObject.Find("CameraRig")) {
+                mainCameraTransform = GameObject.Find("CameraRig").transform;
+            }
+            // Oculus Rig Setup
+            else if(GameObject.Find("OVRCameraRig")) {
+                mainCameraTransform = GameObject.Find("OVRCameraRig").transform;
+            }
+            
+            leftHandAnchor = GameObject.Find("LeftHandAnchor").transform;
+            rightHandAnchor = GameObject.Find("RightHandAnchor").transform;
+
+            leftControllerTranform = GameObject.Find("LeftControllerAnchor").transform;
+            rightControllerTranform = GameObject.Find("RightControllerAnchor").transform;
 
             player = FindObjectOfType<BNGPlayerController>();
 
-            // Use this to keep our head up high
-            player.ElevateCameraIfNoHMDPresent = true;
-            _originalPlayerYOffset = player.ElevateCameraHeight;
+            if(player) {
+                // Use this to keep our head up high
+                player.ElevateCameraIfNoHMDPresent = true;
+                _originalPlayerYOffset = player.ElevateCameraHeight;
 
-            // Only useful in the editor
-            if (!Application.isEditor) {
-                Destroy(this);
-            }           
-        }        
+                smoothLocomotion = player.GetComponentInChildren<SmoothLocomotion>(true);
+
+                // initialize component if it's currently disabled
+                if(smoothLocomotion != null && !smoothLocomotion.isActiveAndEnabled) {
+                    smoothLocomotion.CheckControllerReferences();
+                }
+
+                playerTeleport = player.GetComponentInChildren<PlayerTeleport>(true);
+                if(playerTeleport) {
+                    priorStraightSetting = playerTeleport.ForceStraightArrow;
+                }
+
+                if (smoothLocomotion == null) {
+                    Debug.Log("No Smooth Locomotion component found. Will not be able to use SmoothLocomotion without calling it manually.");
+                }
+                else if (smoothLocomotion.MoveAction == null) {
+                    Debug.Log("Smooth Locomotion Move Action has not been assigned. Make sure to assign this in the inspector if you want to be able to move around using the VR Emulator.");
+                }
+            }
+        }
+        
+        public void OnBeforeRender() {
+            HMDIsActive = InputBridge.Instance.HMDActive;
+
+            // Ready to go
+            if (EmulatorEnabled && !HMDIsActive) {
+                UpdateControllerPositions();
+            }
+        }
 
         void onFirstActivate() {
-            leftControllerTranform.transform.localPosition = new Vector3(-0.2f, -0.2f, 0.5f);
-            rightControllerTranform.transform.localPosition = new Vector3(0.2f, -0.2f, 0.5f);
+            UpdateControllerPositions();            
 
             didFirstActivate = true;
         }
@@ -78,7 +158,7 @@ namespace BNG {
         void Update() {
 
             //// Considerd absent if specified or unknown status
-            //bool userAbsent = XRDevice.userPresence == UserPresenceState.NotPresent || XRDevice.userPresence == UserPresenceState.Unknown;
+            // bool userAbsent = XRDevice.userPresence == UserPresenceState.NotPresent || XRDevice.userPresence == UserPresenceState.Unknown;
             // Updated to show in Debug Settings
             HMDIsActive = InputBridge.Instance.HMDActive;
 
@@ -89,9 +169,14 @@ namespace BNG {
                     onFirstActivate();
                 }
 
-                CheckHeadControls();
+                // Require focus
+                if (HasRequiredFocus()) {
+                    CheckHeadControls();
 
-                CheckPlayerControls();
+                    UpdateControllerPositions();
+
+                    CheckPlayerControls();
+                }
             }
 
             // Device came online after emulator had started
@@ -100,30 +185,57 @@ namespace BNG {
             }
         }
 
+        public virtual bool HasRequiredFocus() {
+
+            // No Focus Required
+            if(RequireGameFocus == false) {
+                return true;
+            }
+
+            return Application.isEditor && Application.isFocused;
+        }
+
         public void CheckHeadControls() {
 
-            // Hold right mouse button down to move camera around
-            if(Input.GetMouseButton(1)) {
 
-                // Move Camera on Y Axis
-                mouseRotationY += Input.GetAxis("Mouse Y") * MouseSensitivityY;
-                mouseRotationY = Mathf.Clamp(mouseRotationY, MinimumCameraY, MaximumCameraY);
-                mainCameraTransform.localEulerAngles = new Vector3(-mouseRotationY, mainCameraTransform.localEulerAngles.y, 0);
+            // Hold LockCameraAction (example : right mouse button down ) to move camera around
+            if (LockCameraAction != null) {
 
-                // Player controller on X axis
-                player.transform.Rotate(0, Input.GetAxis("Mouse X") * MouseSensitivityX, 0);
+                // Lock
+                if (LockCameraAction.action.ReadValue<float>() == 1) {
 
-                // Lock Camera and cursor
-                Cursor.lockState = CursorLockMode.Locked;
-                Cursor.visible = false;
-            }
-            else {
+                    // Lock Camera and cursor
+                    Cursor.visible = false;
+                    Cursor.lockState = CursorLockMode.Locked;
+                   
+                    Vector3 mouseLook = Vector2.zero;
+                    if(CameraLookAction != null) {
+                        mouseLook = CameraLookAction.action.ReadValue<Vector2>();
+                    }
+                    // Fall back to mouse
+                    else {
+                        mouseLook = Mouse.current.delta.ReadValue();
+                    }
+                    // Rotation Y
+                    mouseRotationY += mouseLook.y * CameraLookSensitivityY;
+
+                    mouseRotationY = Mathf.Clamp(mouseRotationY, MinimumCameraY, MaximumCameraY);
+                    mainCameraTransform.localEulerAngles = new Vector3(-mouseRotationY, mainCameraTransform.localEulerAngles.y, 0);
+
+                    // Move PLayer on X Axis
+                    player.transform.Rotate(0, mouseLook.x * CameraLookSensitivityX, 0);
+                }
                 // Unlock Camera
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
+                else {
+                    Cursor.lockState = CursorLockMode.None;
+                    Cursor.visible = true;
+                }
             }
         }
 
+        public bool RequireGameFocus = true;
+
+        float prevVal;
         /// <summary>
         /// Overwrite InputBridge inputs with our own bindings
         /// </summary>
@@ -134,25 +246,103 @@ namespace BNG {
                 return;
             }
 
+            // Window doesn't have focus
+            if(!HasRequiredFocus()) {
+                return;
+            }
+
             // Make sure grabbers are assigned
             checkGrabbers();
 
-            InputBridge.Instance.LeftTrigger = Input.GetKey(LeftTrigger) ? 1f : 0;
-            InputBridge.Instance.LeftGrip = Input.GetKey(LeftGrip) ? 1f : 0;
-            InputBridge.Instance.LeftThumbNear = Input.GetKey(LeftThumbNear);
+            // Simulate Left Controller states
+            if (LeftTriggerAction != null) {
+                prevVal = InputBridge.Instance.LeftTrigger;
+                InputBridge.Instance.LeftTrigger = LeftTriggerAction.action.ReadValue<float>();
+                InputBridge.Instance.LeftTriggerDown = prevVal < InputBridge.Instance.DownThreshold && InputBridge.Instance.LeftTrigger >= InputBridge.Instance.DownThreshold;
+                InputBridge.Instance.LeftTriggerUp = prevVal > InputBridge.Instance.DownThreshold && InputBridge.Instance.LeftTrigger < InputBridge.Instance.DownThreshold;
+            }
 
-            InputBridge.Instance.RightTrigger = Input.GetKey(RightTrigger) ? 1f : 0;
-            InputBridge.Instance.RightGrip = Input.GetKey(RightGrip) ? 1f : 0;
-            InputBridge.Instance.RightThumbNear = Input.GetKey(RightThumbNear);
+            if (LeftGripAction != null) {
+                prevVal = InputBridge.Instance.LeftGrip;
+                InputBridge.Instance.LeftGrip = LeftGripAction.action.ReadValue<float>();
+                InputBridge.Instance.LeftGripDown = prevVal < InputBridge.Instance.DownThreshold && InputBridge.Instance.LeftGrip >= InputBridge.Instance.DownThreshold;
+            }
+
+            if(LeftThumbNearAction != null) {
+                InputBridge.Instance.LeftThumbNear = LeftThumbNearAction.action.ReadValue<float>() == 1;
+            }
+
+            // Simulate Right Controller states
+            if (RightTriggerAction!= null) {
+                float rightTriggerVal = RightTriggerAction.action.ReadValue<float>();
+
+                prevVal = InputBridge.Instance.RightTrigger;
+                InputBridge.Instance.RightTrigger = RightTriggerAction.action.ReadValue<float>();
+                InputBridge.Instance.RightTriggerDown = prevVal < InputBridge.Instance.DownThreshold && InputBridge.Instance.RightTrigger >= InputBridge.Instance.DownThreshold;
+                InputBridge.Instance.RightTriggerUp = prevVal > InputBridge.Instance.DownThreshold && InputBridge.Instance.RightTrigger < InputBridge.Instance.DownThreshold;
+            }
+
+            if (RightGripAction != null) {
+                prevVal = InputBridge.Instance.RightGrip;
+                InputBridge.Instance.RightGrip = RightGripAction.action.ReadValue<float>();
+                InputBridge.Instance.RightGripDown = prevVal < InputBridge.Instance.DownThreshold && InputBridge.Instance.RightGrip >= InputBridge.Instance.DownThreshold;
+            }
+
+            if(RightThumbNearAction) {
+                InputBridge.Instance.RightThumbNear = RightThumbNearAction.action.ReadValue<float>() == 1;
+            }
         }
 
         public void CheckPlayerControls() {
-            if(Input.GetKey(PlayerUp)) {
-                player.ElevateCameraHeight = Mathf.Clamp(player.ElevateCameraHeight + Time.deltaTime, 0.2f, 5f);
+
+            // Require focus
+            if(RequireGameFocus && Application.isEditor && !Application.isFocused) {
+                return;
             }
-            else if (Input.GetKey(PlayerDown)) {
-                player.ElevateCameraHeight = Mathf.Clamp(player.ElevateCameraHeight - Time.deltaTime, 0.2f, 5f);
+
+            // Player Up / Down
+            if(AllowUpDownControls) {
+                if (PlayerUpAction != null && PlayerUpAction.action.ReadValue<float>() == 1) {
+                    player.ElevateCameraHeight = Mathf.Clamp(player.ElevateCameraHeight + Time.deltaTime, 0.2f, 5f);
+                }
+                else if (PlayerDownAction != null && PlayerDownAction.action.ReadValue<float>() == 1) {
+                    player.ElevateCameraHeight = Mathf.Clamp(player.ElevateCameraHeight - Time.deltaTime, 0.2f, 5f);
+                }
             }
+
+            // Force Forward Arrow
+            if(ForceStraightTeleportRotation && playerTeleport != null && playerTeleport.ForceStraightArrow == false) {
+                playerTeleport.ForceStraightArrow = true;
+            }
+
+            // Player Move Forward / Back, Snap Turn
+            if (smoothLocomotion != null && smoothLocomotion.enabled == false) {
+                // Manually allow player movement if the smooth locomotion component is disabled
+                smoothLocomotion.CheckControllerReferences();
+                smoothLocomotion.UpdateInputs();
+
+                if(smoothLocomotion.ControllerType == PlayerControllerType.CharacterController) {
+                    smoothLocomotion.MoveCharacter();
+                }
+                else if (smoothLocomotion.ControllerType == PlayerControllerType.Rigidbody) {
+                    smoothLocomotion.MoveRigidCharacter();
+                }
+            }
+        }
+
+        void FixedUpdate() {
+            // Player Move Forward / Back, Snap Turn
+            //if (smoothLocomotion != null && smoothLocomotion.enabled == false && smoothLocomotion.ControllerType == PlayerControllerType.Rigidbody) {
+            //    smoothLocomotion.MoveRigidCharacter();
+            //}
+        }
+
+        public virtual void UpdateControllerPositions() {
+            leftControllerTranform.transform.localPosition = LeftControllerPosition;
+            leftControllerTranform.transform.localEulerAngles = Vector3.zero;
+
+            rightControllerTranform.transform.localPosition = RightControllerPosition;
+            rightControllerTranform.transform.localEulerAngles = Vector3.zero;
         }
 
         void checkGrabbers() {
@@ -198,16 +388,48 @@ namespace BNG {
                 player.ElevateCameraHeight = _originalPlayerYOffset;
             }
 
+            // Reset Teleport Status
+            if(ForceStraightTeleportRotation && playerTeleport) {
+                playerTeleport.ForceStraightArrow = priorStraightSetting;
+            }
+
             didFirstActivate = false;
         }
 
         void OnEnable() {
+
+            if (EmulatorActionSet != null) {
+                foreach (var map in EmulatorActionSet.actionMaps) {
+                    foreach (var action in map) {
+                        if(action != null) {
+                            action.Enable();
+                        }
+                    }
+                }
+            }
+
             // Subscribe to input events
             InputBridge.OnInputsUpdated += UpdateInputs;
+
+            Application.onBeforeRender += OnBeforeRender;
         }
 
         void OnDisable() {
-            if(isQuitting) {
+
+            // Disable Input Actions
+            if (EmulatorActionSet != null) {
+                foreach (var map in EmulatorActionSet.actionMaps) {
+                    foreach (var action in map) {
+                        if (action != null) {
+                            action.Disable();
+                        }
+                    }
+                }
+            }
+
+            Application.onBeforeRender -= OnBeforeRender;
+
+            if (isQuitting) {
                 return;
             }
 

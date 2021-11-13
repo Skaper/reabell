@@ -50,7 +50,6 @@ namespace BNG {
         // Colliders to keep track of
         List<Collider> handColliders;
 
-        // Start is called before the first frame update
         void Start() {
             handColliders = new List<Collider>();
             var tempColliders = GetComponentsInChildren<Collider>(true);
@@ -63,7 +62,6 @@ namespace BNG {
             }
         }
 
-        // Update is called once per frame
         void Update() {
             if(!EnableHandCollision) {
                 return;
@@ -89,13 +87,12 @@ namespace BNG {
 
                 // Immediately disable collider if we just released an item. 
                 // This is so we don't enable the collider right when we are trying to drop something
-                if(HandGrabber != null && (Time.time - HandGrabber.LastDropTime < 0.1f )) {
+                if(HandGrabber != null && (Time.time - HandGrabber.LastDropTime < 0.5f )) {
                     col.enabled = false;
                     continue;
                 }
 
                 bool enableCollider = false;
-
                 if (EnableCollisionDuringGrab && grabbing) {
                     enableCollider = true;
                 }

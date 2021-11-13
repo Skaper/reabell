@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 namespace BNG {
 
@@ -17,11 +19,19 @@ namespace BNG {
         [Tooltip("A transform on the right controller to use when raycasting for world space UI events")]
         public Transform RightPointerTransform;
 
-        [Tooltip("A transform on the right controller to use when raycasting for world space UI events")]
+        [Tooltip("Controller Binding to use for input down, up, etc.")]
         public List<ControllerBinding> ControllerInput = new List<ControllerBinding>() { ControllerBinding.RightTrigger };
 
-        [Tooltip("If true, Left Mouse Button down event will be sent as a click")]
-        public bool AllowMouseInput = true;
+        [Tooltip("Unity Input Action used to simulate a click or touch event")]
+        public InputActionReference UIInputAction;
+
+        [Tooltip("If true a PhysicsRaycaster component will be added to the UI camera, allowing physical objects to use IPointer events such as OnPointClick, OnPointEnter, etc.")]
+        public bool AddPhysicsRaycaster = false;
+
+        public LayerMask PhysicsRaycasterEventMask;
+
+        [Tooltip("If true the Right Thumbstick will send scroll events to the UI")]
+        public bool RightThumbstickScroll = true;
 
         [Header("Shown for Debug : ")]
         public GameObject PressingObject;
@@ -34,6 +44,7 @@ namespace BNG {
         
         private GameObject _initialPressObject;
         private bool _lastInputDown;
+        bool inputDown;
 
         private static VRUISystem _instance;
         public static VRUISystem Instance {
@@ -73,16 +84,24 @@ namespace BNG {
                 // We can reduce the fov and disable the camera component for performance
                 var go = new GameObject("CameraCaster");
                 cameraCaster = go.AddComponent<Camera>();
+                cameraCaster.stereoTargetEye = StereoTargetEyeMask.None;
                 cameraCaster.fieldOfView = 5f;
                 cameraCaster.nearClipPlane = 0.01f;
                 cameraCaster.clearFlags = CameraClearFlags.Nothing;
                 cameraCaster.enabled = false;
+
+                // Add PhysicsRaycaster so other objects can subscribe to IPointer events
+                if(AddPhysicsRaycaster) {
+                    var pr = go.AddComponent<PhysicsRaycaster>();
+                    pr.eventMask = PhysicsRaycasterEventMask;
+                }
             }
         }
 
         public override void Process() {
 
-            if(EventData == null) {
+            // Input isn't ready if this Camera Caster's gameObject isn't active
+            if (EventData == null || !CameraCasterReady()) {
                 return;
             }
 
@@ -99,7 +118,16 @@ namespace BNG {
             // Handle Drag
             ExecuteEvents.Execute(EventData.pointerDrag, EventData, ExecuteEvents.dragHandler);
 
-            bool inputDown = InputReady();
+            // Handle scroll
+            if(RightThumbstickScroll) {
+                EventData.scrollDelta = InputBridge.Instance.RightThumbstickAxis;
+                if (!Mathf.Approximately(EventData.scrollDelta.sqrMagnitude, 0)) {
+                    ExecuteEvents.Execute(ExecuteEvents.GetEventHandler<IScrollHandler>(EventData.pointerCurrentRaycast.gameObject), EventData, ExecuteEvents.scrollHandler);
+                }
+            }
+            
+            // Press Events
+            inputDown = InputReady();
 
             // On Trigger Down > TriggerDownValue this frame but not last
             if (inputDown && _lastInputDown == false) {
@@ -118,6 +146,17 @@ namespace BNG {
         }
 
         public virtual bool InputReady() {
+
+            // Input isn't ready if this Camera Caster's gameObject isn't active
+            if(!CameraCasterReady()) {
+                return false;
+            }
+
+            // Check Unity Action
+            if (UIInputAction != null && UIInputAction.action.ReadValue<float>() == 1f) {
+                return true;
+            }
+
             // Check for bound controller button
             for (int x = 0; x < ControllerInput.Count; x++) {
                 if (InputBridge.Instance.GetControllerBindingValue(ControllerInput[x])) {
@@ -125,12 +164,21 @@ namespace BNG {
                 }
             }
 
-            // Keyboard input
-            if (AllowMouseInput && Input.GetMouseButton(0)) {
-                return true;
+            return false;
+        }
+
+
+        /// <summary>
+        /// Returns true if we have a camera caster enabled and ready to send out data
+        /// Returns false if the camera caster is null or it's gameobject is disabled
+        /// </summary>
+        /// <returns></returns>
+        public virtual bool CameraCasterReady() {
+            if (cameraCaster != null && !cameraCaster.gameObject.activeInHierarchy) {
+                return false;
             }
 
-            return false;
+            return true;
         }
 
         public virtual void PressDown() {
@@ -153,7 +201,7 @@ namespace BNG {
             ExecuteEvents.Execute(EventData.pointerDrag, EventData, ExecuteEvents.beginDragHandler);
         }
 
-        public void Press() {
+        public virtual void Press() {
             EventData.pointerPressRaycast = EventData.pointerCurrentRaycast;
 
             // Set Press Objects and Events
@@ -165,7 +213,7 @@ namespace BNG {
             ExecuteEvents.Execute(EventData.pointerDrag, EventData, ExecuteEvents.beginDragHandler);
         }
 
-        public void Release() {
+        public virtual void Release() {
 
             SetReleasingObject(ExecuteEvents.GetEventHandler<IPointerClickHandler>(EventData.pointerCurrentRaycast.gameObject));
 
@@ -219,7 +267,7 @@ namespace BNG {
             canvas.worldCamera = cam;
         }
 
-        public void UpdateControllerHand(ControllerHand hand) {
+        public virtual void UpdateControllerHand(ControllerHand hand) {
             
             // Make sure variables exist
             init();

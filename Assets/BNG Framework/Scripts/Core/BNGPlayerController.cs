@@ -12,18 +12,9 @@ namespace BNG {
     }
 
     /// <summary>
-    /// The BNGPlayerController handles basic player movement and climbing.
+    /// The BNGPlayerController handles basic player movement
     /// </summary>
     public class BNGPlayerController : MonoBehaviour {
-
-        [Header("Locomotion : ")]
-
-
-        [SerializeField]
-        LocomotionType selectedLocomotion = LocomotionType.Teleport;
-        public LocomotionType SelectedLocomotion {
-            get { return selectedLocomotion; }
-        }
 
         [Header("Camera Options : ")]
 
@@ -44,27 +35,21 @@ namespace BNG {
         [Tooltip("The CenterEyeAnchor is typically the Transform that contains your Main Camera")]
         public Transform CenterEyeAnchor;
 
-
-        [Header("Gravity : ")]
-        /// <summary>
-        /// Is Gravity Currently Enabled for this Character
-        /// </summary>
-        public bool GravityEnabled = true;
-        public float GravityAmount = 7.1f;
-
         [Header("Ground checks : ")]
         [Tooltip("Raycast against these layers to check if player is grounded")]
         public LayerMask GroundedLayers;
 
-        private Vector3 moveDirection = Vector3.zero;
-
         /// <summary>
         /// 0 means we are grounded
         /// </summary>
-        [HideInInspector]
+        [Tooltip("How far off the ground the player currently is. 0 = Grounded, 1 = 1 Meter in the air.")]
         public float DistanceFromGround = 0;
 
+        [Tooltip("DistanceFromGround will subtract this value when determining distance from ground")]
+        public float DistanceFromGroundOffset = 0;
+
         [Header("Player Capsule Settings : ")]
+
         /// <summary>
         /// Minimum Height our Player's capsule collider can be (in meters)
         /// </summary>
@@ -76,12 +61,6 @@ namespace BNG {
         /// </summary>
         [Tooltip("Maximum Height our Player's capsule collider can be (in meters)")]
         public float MaximumCapsuleHeight = 3f;        
-
-        [Tooltip("Set the player's capsule collider height to this amount while climbing. This can allow you to shorten the capsule collider a bit, making it easier to navigate over ledges.")]
-        public float ClimbingCapsuleHeight = 0.5f;
-
-        [Tooltip("Set the player's capsule collider capsule center to this amount while climbing.")]
-        public float ClimbingCapsuleCenter = -0.25f;
 
         [HideInInspector]
         public float LastTeleportTime;
@@ -121,147 +100,173 @@ namespace BNG {
         /// </summary>
         public float MaxElevation = 6000f;
 
-        [Header("Shown for Debug : ")]
-
-        /// <summary>
-        /// Whether or not we are currently holding on to something climbable with 1 or more grabbers
-        /// </summary>
-        public bool GrippingClimbable = false;
-
-
         [HideInInspector]
         public float LastPlayerMoveTime;
-
-        // Any climber grabbers in use
-        List<Grabber> climbers;
 
         // The controller to manipulate
         CharacterController characterController;
 
-        // Optional components can be used to update LastMoved Time
-        PlayerTeleport teleport;
+        // The controller to manipulate
+        Rigidbody playerRigid;
+        CapsuleCollider playerCapsule;
+
+        // Use smooth movement if available
         SmoothLocomotion smoothLocomotion;
-        PlayerRotation playerRotation;
+
+        // Optional components can be used to update LastMoved Time
+        PlayerClimbing playerClimbing;
+        bool isClimbing, wasClimbing = false;
 
         // This the object that is currently beneath us
-        RaycastHit groundHit;
-        Transform mainCamera;
-        Vector3 lastPlayerPosition;
-        Quaternion lastPlayerRotation;
-        float lastSnapTime;
+        public RaycastHit groundHit;
 
-        private float _initialGravityModifier;
+        // Stored for GC
+        RaycastHit hit;
+
+        Transform mainCamera;
+
         private Vector3 _initialPosition;
-        private Transform _initialCharacterParent;
 
         void Start() {
             characterController = GetComponentInChildren<CharacterController>();
-            mainCamera = Camera.main.transform;
+            playerRigid = GetComponent<Rigidbody>();
+            playerCapsule = GetComponent<CapsuleCollider>();
+            smoothLocomotion = GetComponentInChildren<SmoothLocomotion>();
+
+            mainCamera = GameObject.FindGameObjectWithTag("MainCamera").transform;
 
             if (characterController) {
-                _initialCharacterParent = characterController.transform.parent;
+                _initialPosition = characterController.transform.position;
+            }
+            else if(playerRigid) {
+                _initialPosition = playerRigid.position;
+            }
+            else {
+                _initialPosition = transform.position;
             }
 
-            _initialGravityModifier = GravityAmount;
-
-            _initialPosition = characterController.transform.position;
-            float initialY = _initialPosition.y;
-            if (initialY < MinElevation) {
-                Debug.LogWarning("Initial Starting Position is lower than Minimum Elevation. Increasing Min Elevation to " + MinElevation);
-                MinElevation = initialY;
-            }
-            if (initialY > MaxElevation) {
-                Debug.LogWarning("Initial Starting Position is greater than Maximum Elevation. Reducing Max Elevation to " + MaxElevation);
-                MaxElevation = initialY;
-            }
-
-            teleport = GetComponent<PlayerTeleport>();
-            smoothLocomotion = GetComponentInChildren<SmoothLocomotion>();
-            playerRotation = GetComponentInChildren<PlayerRotation>();
-
-            climbers = new List<Grabber>();
-
-            // Player root must be at 0,0,0 for Tracking Space to work properly.
-            // If this player transform was moved in the editor on load, we can fix it by moving the CharacterController to the position
-            if (transform.position != Vector3.zero || transform.localEulerAngles != Vector3.zero) {
-                Vector3 playerPos = transform.position;
-                Quaternion playerRot = transform.rotation;
-
-                transform.position = Vector3.zero;
-                transform.rotation = Quaternion.identity;
-
-                if (characterController) {
-                    characterController.transform.position = playerPos;
-                    characterController.transform.rotation = playerRot;
-                }
-
-                Debug.Log("Player position not set to 0. Moving player to : " + playerPos);
-            }
-
-            ChangeLocomotionType(selectedLocomotion);
+            playerClimbing = GetComponentInChildren<PlayerClimbing>();
         }
 
         void Update() {
 
             // Sanity check for camera
-            if (mainCamera == null) {
+            if (mainCamera == null && Camera.main != null) {
                 mainCamera = Camera.main.transform;
-            }            
-            
+            }
+
+            isClimbing = playerClimbing != null && playerClimbing.GrippingAtLeastOneClimbable();
+            if (isClimbing != wasClimbing) {
+                OnClimbingChange();
+            }
+
             // Update the Character Controller's Capsule Height to match our Camera position
             UpdateCharacterHeight();
 
             // Update the position of our camera rig to account for our player's height
             UpdateCameraRigPosition();
 
+            // JPTODO : Testing character height
+            if(playerClimbing != null && playerClimbing.GrippingAtLeastOneClimbable() && characterController != null) {
+                characterController.height = playerClimbing.ClimbingCapsuleHeight;
+            }
+
+            if(playerClimbing != null && playerClimbing.GrippingAtLeastOneClimbable() && playerRigid != null) {
+                playerCapsule.height = playerClimbing.ClimbingCapsuleHeight;
+            }
+			
             // After positioning the camera rig, we can update our main camera's height
             UpdateCameraHeight();
 
-            UpdateDistanceFromGround();
-
             CheckCharacterCollisionMove();
 
-            if (characterController) {
-
-                // Align TrackingSpace with Camera
-                if (RotateCharacterWithCamera) {
-                    RotateTrackingSpaceToCamera();
-                }
-
-                // Update Last snap time based on character controller rotation
-                if (Mathf.Abs(Quaternion.Angle(lastPlayerRotation, characterController.transform.rotation)) > 1) {
-                    UpdateLastSnapTime();
-                }
+            // Align TrackingSpace with Camera
+            if (RotateCharacterWithCamera) {
+                RotateTrackingSpaceToCamera();
             }
+        }
+       
+        void FixedUpdate() {
 
-            checkMovingPlatform();
+            UpdateDistanceFromGround();
 
-            checkClimbing();
-
-            // Store player position so we can compare against it next frame
-            lastPlayerPosition = characterController.transform.position;
-            lastPlayerRotation = characterController.transform.rotation;
+            CheckPlayerElevationRespawn();
         }
 
-        void FixedUpdate() {
-            // Player should never go above or below 6000 units as physics can start to jitter due to floating point precision
-            if (characterController && characterController.transform.position.y < MinElevation || characterController.transform.position.y > MaxElevation) {
+        /// <summary>
+        /// Check if the player has moved beyond the specified min / max elevation
+        /// Player should never go above or below 6000 units as physics can start to jitter due to floating point precision
+        /// Maybe they clipped through a floor, touched a set "lava" height, etc.
+        /// </summary>
+        public virtual void CheckPlayerElevationRespawn() {
+
+            // No need for elevation checks
+            if(MinElevation == 0 && MaxElevation == 0) {
+                return;
+            }
+
+            // Check Elevation based on Character Controller height
+            if(characterController != null && (characterController.transform.position.y < MinElevation || characterController.transform.position.y > MaxElevation)) {
                 Debug.Log("Player out of bounds; Returning to initial position.");
                 characterController.transform.position = _initialPosition;
             }
+			
+            // Check Elevation based on Character Controller height
+            if(playerRigid != null && (playerRigid.transform.position.y < MinElevation || playerRigid.transform.position.y > MaxElevation)) {
+                Debug.Log("Player out of bounds; Returning to initial position.");
+                playerRigid.transform.position = _initialPosition;
+            }			
         }
 
         public virtual void UpdateDistanceFromGround() {
-            if (Physics.Raycast(characterController.transform.position, -characterController.transform.up, out groundHit, 20, GroundedLayers, QueryTriggerInteraction.Ignore)) {
-                DistanceFromGround = Vector3.Distance(characterController.transform.position, groundHit.point);
-                DistanceFromGround += characterController.center.y;
-                DistanceFromGround -= (characterController.height * 0.5f) + characterController.skinWidth;
 
-                // Round to nearest thousandth
-                DistanceFromGround = (float)Math.Round(DistanceFromGround * 1000f) / 1000f;
+            if(characterController) {
+                if (Physics.Raycast(characterController.transform.position, -characterController.transform.up, out groundHit, 20, GroundedLayers, QueryTriggerInteraction.Ignore)) {
+                    DistanceFromGround = Vector3.Distance(characterController.transform.position, groundHit.point);
+                    DistanceFromGround += characterController.center.y;
+                    DistanceFromGround -= (characterController.height * 0.5f) + characterController.skinWidth;
+
+                    // Round to nearest thousandth
+                    DistanceFromGround = (float)Math.Round(DistanceFromGround * 1000f) / 1000f;
+                }
+                else {
+                    DistanceFromGround = float.MaxValue;
+                }
             }
+			
+            if(playerRigid) {
+                if (Physics.Raycast(playerCapsule.transform.position, -playerCapsule.transform.up, out groundHit, 20, GroundedLayers, QueryTriggerInteraction.Ignore)) {
+                    DistanceFromGround = Vector3.Distance(playerCapsule.transform.position, groundHit.point);
+                    DistanceFromGround += playerCapsule.center.y;
+                    DistanceFromGround -= (playerCapsule.height * 0.5f);
+
+                    // Round to nearest thousandth
+                    DistanceFromGround = (float)Math.Round(DistanceFromGround * 1000f) / 1000f;
+                }
+                else {
+                    DistanceFromGround = float.MaxValue;
+                }
+            }
+			
+            // No CharacterController found. Update Distance based on current transform position
             else {
-                DistanceFromGround = 9999f;
+                if (Physics.Raycast(transform.position, -transform.up, out groundHit, 20, GroundedLayers, QueryTriggerInteraction.Ignore)) {
+                    DistanceFromGround = Vector3.Distance(transform.position, groundHit.point) - 0.0875f;
+                    // Round to nearest thousandth
+                    DistanceFromGround = (float)Math.Round(DistanceFromGround * 1000f) / 1000f;
+                }
+                else {
+                    DistanceFromGround = float.MaxValue;
+                }
+            }
+
+            if (DistanceFromGround != float.MaxValue) {
+                DistanceFromGround -= DistanceFromGroundOffset;
+            }
+
+            // Smooth floating point issues from thousandths
+            if(DistanceFromGround < 0.001f && DistanceFromGround > -0.001f) {
+                DistanceFromGround = 0;
             }
         }
 
@@ -270,61 +275,42 @@ namespace BNG {
             Quaternion initialRotation = TrackingSpace.rotation;
 
             // Move the character controller to the proper rotation / alignment
-            characterController.transform.rotation = Quaternion.Euler(0.0f, CenterEyeAnchor.rotation.eulerAngles.y, 0.0f);
+            if(characterController) {
+                characterController.transform.rotation = Quaternion.Euler(0.0f, CenterEyeAnchor.rotation.eulerAngles.y, 0.0f);
 
-            // Now we can rotate our tracking space back to initial position / rotation
-            TrackingSpace.position = initialPosition;
-            TrackingSpace.rotation = initialRotation;
+                // Now we can rotate our tracking space back to initial position / rotation
+                TrackingSpace.position = initialPosition;
+                TrackingSpace.rotation = initialRotation;
+            }
+            else if(playerRigid) {
+                playerRigid.transform.rotation = Quaternion.Euler(0.0f, CenterEyeAnchor.rotation.eulerAngles.y, 0.0f);
+
+                // Now we can rotate our tracking space back to initial position / rotation
+                TrackingSpace.position = initialPosition;
+                TrackingSpace.rotation = initialRotation;
+            }
         }
-
-        // Update the last time we snapped the player rotation
-        public virtual void UpdateLastSnapTime() {
-            lastSnapTime = Time.time; 
-        }
-
-        public virtual bool RecentlyMoved() {
-
-            // Recently Moved if position changed to teleport of some kind
-            if(Vector3.Distance(lastPlayerPosition, characterController.transform.position) > 0.001f) {
-                return true;
-            }
-
-            // Considered recently moved if just teleported
-            if (Time.time - LastTeleportTime < 0.1f) {
-                return true;
-            }
-
-            // Considered recently moved if just moved using PlayerController (for example, snap turning)
-            if (Time.time - LastPlayerMoveTime < 0.1f) {
-                return true;
-            }
-
-            // Recently Moved if position changed to teleport of some kind
-            if (Vector3.Distance(lastPlayerPosition, characterController.transform.position) > 0.001f) {
-                return true;
-            }
-
-            // Recently Snap Turned through rotation
-            if(playerRotation != null && playerRotation.RecentlySnapTurned()) {
-                return true;
-            }
-
-            // Recent Snap Turn
-            if(Time.time - lastSnapTime < 0.2f) {
-                return true;
-            }
-
-            return false;
-        }        
 
         public virtual void UpdateCameraRigPosition() {
-            float yPos = -(0.5f * characterController.height) + characterController.center.y + CharacterControllerYOffset;
-            if (grippingAtLeastOneClimbable()) {
-                yPos -= 0.25f;
+
+            float yPos = CharacterControllerYOffset;
+
+            // Get character controller position based on the height and center of the capsule
+            if (characterController != null) {
+                yPos = -(0.5f * characterController.height) + characterController.center.y + CharacterControllerYOffset;
+            }
+            // Get character controller position based on the height and center of the capsule
+            else if (playerRigid != null) {
+                 yPos = -(0.5f * playerCapsule.height) + playerCapsule.center.y + CharacterControllerYOffset;
+            }
+
+            // Offset the capsule a bit while climbing. This allows the player to more easily hoist themselves onto a ledge / platform.
+            if (playerClimbing != null && playerClimbing.GrippingAtLeastOneClimbable()) {
+                 //yPos = yPos - (playerClimbing.ClimbingCapsuleHeight - playerClimbing.ClimbingCapsuleCenter);
             }
 
             // If no HMD is active, bump our rig up a bit so it doesn't sit on the floor
-            if(!InputBridge.Instance.HMDActive && ElevateCameraIfNoHMDPresent) {
+            if (!InputBridge.Instance.HMDActive && ElevateCameraIfNoHMDPresent) {
                 yPos += ElevateCameraHeight;
             }
 
@@ -339,17 +325,25 @@ namespace BNG {
             }
 
             // Update Character Height based on Camera Height.
-            characterController.height = Mathf.Clamp(CameraHeight + CharacterControllerYOffset - characterController.skinWidth, minHeight, MaximumCapsuleHeight);
+            if(characterController) {
+                characterController.height = Mathf.Clamp(CameraHeight + CharacterControllerYOffset - characterController.skinWidth, minHeight, MaximumCapsuleHeight);
 
-            // If we are climbing set the capsule center upwards
-            if (grippingAtLeastOneClimbable()) {
-                characterController.height = ClimbingCapsuleHeight;
-                characterController.center = new Vector3(0, ClimbingCapsuleCenter, 0);
+                // If we are climbing set the capsule center upwards
+                if (playerClimbing != null && playerClimbing.GrippingAtLeastOneClimbable()) {
+                    playerCapsule.height = playerClimbing.ClimbingCapsuleHeight;
+                    playerCapsule.center = new Vector3(0, playerClimbing.ClimbingCapsuleCenter * 2, 0);
+                }
+                else {
+                    characterController.center = new Vector3(0, playerClimbing.ClimbingCapsuleCenter, 0);
+                }
             }
-            else {
-                characterController.center = new Vector3(0, -0.25f, 0);
+            else if(playerRigid && playerCapsule) {
+                playerCapsule.height = Mathf.Clamp(CameraHeight + CharacterControllerYOffset, minHeight, MaximumCapsuleHeight);
+                playerCapsule.center = new Vector3(0, playerCapsule.height / 2 + (SphereColliderRadius * 2), 0);
             }
         }
+
+        public float SphereColliderRadius = 0.08f;
 
         public virtual void UpdateCameraHeight() {
             // update camera height
@@ -358,7 +352,9 @@ namespace BNG {
             }
         }
 
-
+        /// <summary>
+        /// Move the character controller to new camera position
+        /// </summary>
         public virtual void CheckCharacterCollisionMove() {
 
             if(!MoveCharacterWithCamera) {
@@ -367,150 +363,46 @@ namespace BNG {
             
             Vector3 initialCameraRigPosition = CameraRig.transform.position;
             Vector3 cameraPosition = CenterEyeAnchor.position;
-            Vector3 delta = cameraPosition - characterController.transform.position;
+            Vector3 movePosition = new Vector3(cameraPosition.x, transform.position.y, cameraPosition.z);
+            Vector3 delta = cameraPosition - transform.position;
             
             // Ignore Y position
             delta.y = 0;
 
             // Move Character Controller and Camera Rig to Camera's delta
             if (delta.magnitude > 0.0f) {
-                characterController.Move(delta);
+
+                if(smoothLocomotion && smoothLocomotion.ControllerType == PlayerControllerType.CharacterController) {
+                    smoothLocomotion.MoveCharacter(delta);
+                }
+                else if (smoothLocomotion && smoothLocomotion.ControllerType == PlayerControllerType.Rigidbody) {
+                    CheckRigidbodyCapsuleMove(movePosition);
+                }
+                else if(characterController) {
+                    characterController.Move(delta);
+                }
 
                 // Move Camera Rig back into position
                 CameraRig.transform.position = initialCameraRigPosition;
             }
         }
 
-        bool grippingAtLeastOneClimbable() {
+        Vector3 moveTest;
 
-            if(climbers != null && climbers.Count > 0) {
+        public virtual void CheckRigidbodyCapsuleMove(Vector3 movePosition) {
 
-                for(int x = 0; x < climbers.Count; x++) {
-                    // Climbable is still being held
-                    if(climbers[x] != null && climbers[x].HoldingItem) {
-                        return true;
-                    }
-                }
+            bool noCollision = true;
+            float capsuleRadius = 0.2f;
+            moveTest = movePosition;
 
-                // If we made it through every climber and none were valid, reset the climbers
-                climbers = new List<Grabber>();
+            // Cast capsule shape at the desired position to see if it is about to hit anything
+            if (Physics.SphereCast(movePosition, capsuleRadius, transform.up, out hit, playerCapsule.height / 2, GroundedLayers, QueryTriggerInteraction.Ignore)) {
+                Debug.Log(hit.collider);
+                noCollision = false;
             }
 
-            return false;
-        }
-
-        void checkClimbing() {
-            GrippingClimbable = grippingAtLeastOneClimbable();
-
-            if (GrippingClimbable) {
-
-                if(smoothLocomotion) {
-                    smoothLocomotion.DisableMovement();
-                }
-
-                moveDirection = Vector3.zero;
-
-                int count = 0;
-                for (int i = 0; i < climbers.Count; i++) {
-                    Grabber climber = climbers[i];
-                    if (climber != null && climber.HoldingItem) {
-                        Vector3 climberMoveAmount = climber.PreviousPosition - climber.transform.position;
-
-                        if (count == 0) {
-                            moveDirection += climberMoveAmount;
-                        }
-                        else {
-                            moveDirection += climberMoveAmount - moveDirection;
-                        }
-
-                        count++;
-                    }
-                }
-
-                characterController.Move(moveDirection);
-            }
-            else {
-                if (smoothLocomotion) {
-                    smoothLocomotion.EnableMovement();
-                }
-            }
-
-            // Update any climber previous position
-            for (int x = 0; x < climbers.Count; x++) {
-                Grabber climber = climbers[x];
-                if (climber != null && climber.HoldingItem) {
-                    if (climber.DummyTransform != null) {
-                        // Use climber position if possible
-                        climber.PreviousPosition = climber.DummyTransform.position;
-                    }
-                    else {
-                        climber.PreviousPosition = climber.transform.position;
-                    }
-                }
-            }
-        }
-
-        public virtual void checkMovingPlatform() {
-            bool onMovingPlatform = false;
-
-            Vector3 moveDir = Vector3.zero;
-
-            if (groundHit.collider != null && DistanceFromGround < 0.01f) {
-                MoveToWaypoint waypoint = groundHit.collider.gameObject.GetComponent<MoveToWaypoint>();
-                MovingPlatform platform = groundHit.collider.gameObject.GetComponent<MovingPlatform>();
-
-                if (platform) {
-                    onMovingPlatform = true;
-
-                    if (waypoint.PositionDifference != Vector3.zero) {
-                        // This is another potential method of moving the character instead of parenting it
-                        //characterController.Move(platform.PositionDifference);
-                    }
-                }
-            }
-
-            // For now we can parent the objet to move it along
-            if (onMovingPlatform) {
-                characterController.transform.parent = groundHit.collider.transform;
-            }
-            else {
-                characterController.transform.parent = _initialCharacterParent;
-            }
-        }
-
-        public void ChangeLocomotionType(LocomotionType loc) {
-            selectedLocomotion = loc;
-
-            if(teleport == null) {
-                teleport = GetComponent<PlayerTeleport>();
-            }
-
-            toggleTeleport(selectedLocomotion == LocomotionType.Teleport);
-            toggleSmoothLocomotion(selectedLocomotion == LocomotionType.SmoothLocomotion);
-        }
-
-        void toggleTeleport(bool enabled) {
-            if(enabled) {
-                teleport.EnableTeleportation();
-            }
-            else {
-                teleport.DisableTeleportation();
-            }
-        }
-
-        void toggleSmoothLocomotion(bool enabled) {
-            if(smoothLocomotion) {
-                smoothLocomotion.enabled = enabled;
-            }
-        }
-
-        public void ToggleLocomotionType() {
-            // Toggle based on last value
-            if(selectedLocomotion == LocomotionType.SmoothLocomotion) {
-                ChangeLocomotionType(LocomotionType.Teleport);
-            }
-            else {
-                ChangeLocomotionType(LocomotionType.SmoothLocomotion);
+            if (noCollision) {
+                transform.position = movePosition;
             }
         }
 
@@ -522,53 +414,58 @@ namespace BNG {
                     return true;
                 }
             }
-
+			
             // DistanceFromGround is a bit more reliable as we can give a bit of leniency in what's considered grounded
-            return DistanceFromGround <= 0.001f;
+            return DistanceFromGround <= 0.007f;
         }
 
-        public void ToggleGravity(bool gravityOn) {
+        public virtual void OnClimbingChange() {
+            // Climbing
+            if(playerClimbing.GrippingAtLeastOneClimbable()) {
 
-            GravityEnabled = gravityOn;
-
-
-            if (gravityOn) {
-                GravityAmount = _initialGravityModifier;
             }
+            // Just let go
             else {
-                GravityAmount = 0;
+
             }
         }
 
-        public void AddClimber(Climbable climbable, Grabber grab) {
-            if (!climbers.Contains(grab)) {
+//#if UNITY_EDITOR
+//        public static void DrawWireCapsule(Vector3 _pos, Vector3 _pos2, float _radius, float _height, Color _color = default) {
+//            if (_color != default) {
+//                UnityEditor.Handles.color = _color;
+//            }
 
-                if(grab.DummyTransform == null) {
-                    GameObject go = new GameObject();
-                    go.transform.name = "DummyTransform";
-                    go.transform.parent = grab.transform;
-                    go.transform.position = grab.transform.position;
-                    go.transform.localEulerAngles = Vector3.zero;
+//            var forward = _pos2 - _pos;
+//            var _rot = Quaternion.LookRotation(forward);
+//            var pointOffset = _radius / 2f;
+//            var length = forward.magnitude;
+//            var center2 = new Vector3(0f, 0, length);
 
-                    grab.DummyTransform = go.transform;
-                }
+//            Matrix4x4 angleMatrix = Matrix4x4.TRS(_pos, _rot, UnityEditor.Handles.matrix.lossyScale);
 
-                // Set parent to whatever we grabbed. This way we can follow the object around if it moves
-                grab.DummyTransform.parent = climbable.transform;
-                grab.PreviousPosition = grab.DummyTransform.position;
+//            using (new UnityEditor.Handles.DrawingScope(angleMatrix)) {
+//                UnityEditor.Handles.DrawWireDisc(Vector3.zero, Vector3.forward, _radius);
+//                UnityEditor.Handles.DrawWireArc(Vector3.zero, Vector3.up, Vector3.left * pointOffset, -180f, _radius);
+//                UnityEditor.Handles.DrawWireArc(Vector3.zero, Vector3.left, Vector3.down * pointOffset, -180f, _radius);
+//                UnityEditor.Handles.DrawWireDisc(center2, Vector3.forward, _radius);
+//                UnityEditor.Handles.DrawWireArc(center2, Vector3.up, Vector3.right * pointOffset, -180f, _radius);
+//                UnityEditor.Handles.DrawWireArc(center2, Vector3.left, Vector3.up * pointOffset, -180f, _radius);
 
-                climbers.Add(grab);
-            }
-        }
+//                DrawLine(_radius, 0f, length);
+//                DrawLine(-_radius, 0f, length);
+//                DrawLine(0f, _radius, length);
+//                DrawLine(0f, -_radius, length);
+//            }
+//        }
 
-        public void RemoveClimber(Grabber grab) {
-            if (climbers.Contains(grab)) {
-                // Reset grabbable parent
-                grab.DummyTransform.parent = grab.transform;
-                grab.DummyTransform.localPosition = Vector3.zero;
+//        private static void DrawLine(float arg1, float arg2, float forward) {
+//            UnityEditor.Handles.DrawLine(new Vector3(arg1, arg2, 0f), new Vector3(arg1, arg2, forward));
+//        }
 
-                climbers.Remove(grab);
-            }
-        }
+//        void OnDrawGizmosSelected() {
+//            DrawWireCapsule(moveTest, moveTest + new Vector3(0, playerCapsule.height), 0.2f, playerCapsule.height / 2);
+//        }
+//#endif
     }
 }

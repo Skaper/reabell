@@ -4,53 +4,65 @@ using System.Linq;
 using UnityEngine;
 
 namespace BNG {
-
-    public enum GrabType {
-        Snap,
-        Precise
-    }
-
-    public enum GrabPhysics {
-        None = 2,
-        PhysicsJoint = 0,
-        FixedJoint = 3,
-        Velocity = 4,
-        Kinematic = 1
-    }
-
-    public enum OtherGrabBehavior {
-        None,
-        SwapHands,
-        DualGrab
-    }
-
+    
     /// <summary>
     /// An object that can be picked up by a Grabber
     /// </summary>
     public class Grabbable : MonoBehaviour {
 
-        [HideInInspector]
+        /// <summary>
+        /// Is this object currently being held by a Grabber
+        /// </summary>
         public bool BeingHeld = false;
-        List<Grabber> validGrabbers;        
+
+        /// <summary>
+        /// Is this object currently being held by more than one Grabber
+        /// </summary>
+        public bool BeingHeldWithTwoHands {
+            get {
+                if (heldByGrabbers != null && heldByGrabbers.Count > 1 && SecondaryGrabBehavior == OtherGrabBehavior.DualGrab) {
+                    return true;
+                }
+                // Being Held and a defined SecondaryGrabbable is also being held
+                else if (BeingHeld && SecondaryGrabbable != null && SecondaryGrabbable.BeingHeld == true) {
+                    return true;
+                }
+
+                return false;
+            }
+        }
+
+        List<Grabber> validGrabbers;
 
         /// <summary>
         /// The grabber that is currently holding us. Null if not being held
         /// </summary>        
         protected List<Grabber> heldByGrabbers;
 
+        public List<Grabber> HeldByGrabbers {
+            get {
+                return heldByGrabbers;
+            }
+        }
+
         /// <summary>
         /// Save whether or not the RigidBody was kinematic on Start.
         /// </summary>
-        bool wasKinematic;
-        bool usedGravity;
-        CollisionDetectionMode initialCollisionMode;
-        RigidbodyInterpolation initialInterpolationMode;
+        protected bool wasKinematic;
+        protected bool usedGravity;
+        protected CollisionDetectionMode initialCollisionMode;
+        protected RigidbodyInterpolation initialInterpolationMode;
 
         /// <summary>
         /// Is the object being pulled towards the Grabber
         /// </summary>
-        bool remoteGrabbing;
+        public bool RemoteGrabbing {
+            get {
+                return remoteGrabbing;
+            }
+        }        
 
+        protected bool remoteGrabbing;
 
         [Header("Grab Settings")]
         /// <summary>
@@ -68,20 +80,20 @@ namespace BNG {
         /// <summary>
         /// Kinematic Physics locks the object in place on the hand / grabber. PhysicsJoint allows collisions with the environment.
         /// </summary>
-        [Tooltip("Kinematic Physics locks the object in place on the hand / grabber. Physics Joint allows collisions with the environment.")]
-        public GrabPhysics GrabPhysics = GrabPhysics.PhysicsJoint;
+        [Tooltip("Kinematic Physics locks the object in place on the hand / grabber. Physics Joint and Velocity types allow collisions with the environment.")]
+        public GrabPhysics GrabPhysics = GrabPhysics.Velocity;
 
         /// <summary>
         /// Snap to a location or grab anywhere on the object
         /// </summary>
         [Tooltip("Snap to a location or grab anywhere on the object")]
-        public GrabType GrabMechanic = GrabType.Snap;
+        public GrabType GrabMechanic = GrabType.Precise;
 
         /// <summary>
         /// How fast to Lerp the object to the hand
         /// </summary>
         [Tooltip("How fast to Lerp the object to the hand")]
-        public float GrabSpeed = 7.5f;
+        public float GrabSpeed = 15f;
 
         /// <summary>
         /// Can the object be picked up from far away. Must be within RemoteGrabber Trigger
@@ -89,6 +101,8 @@ namespace BNG {
         [Header("Remote Grab")]
         [Tooltip("Can the object be picked up from far away. Must be within RemoteGrabber Trigger")]
         public bool RemoteGrabbable = false;
+
+        public RemoteGrabMovement RemoteGrabMechanic = RemoteGrabMovement.Linear;
 
         /// <summary>
         /// Max Distance Object can be Remote Grabbed. Not applicable if RemoteGrabbable is false
@@ -126,14 +140,14 @@ namespace BNG {
         ///  Parent this object to the hands for better stability.
         ///  Not recommended for child grabbers
         /// </summary>
-        [Tooltip("Parent this object to the hands for better stability during movement (Recommended unless this object is a Kinematic Rigidbody or child Grabbable / Rigidbody)")]
-        public bool ParentToHands = true;
+        [Tooltip("Parent this object to the hands for instantaneous movement. Object will travel 1:1 with the controller but may have trouble detecting fast moving collisions.")]
+        public bool ParentToHands = false;
 
         /// <summary>
         /// If true, the hand model will be attached to the grabbed object
         /// </summary>
         [Tooltip("If true, the hand model will be attached to the grabbed object. This separates it from a 1:1 match with the controller, but may look more realistic.")]
-        public bool ParentHandModel = false;
+        public bool ParentHandModel = true;
 
         [Tooltip("If true, the hand model will snap to the nearest GrabPoint. Otherwise the hand model will stay with the Grabber.")]
         public bool SnapHandModel = true;
@@ -154,36 +168,69 @@ namespace BNG {
         [Tooltip("If true, the object will always have kinematic disabled when dropped, even if it was initially kinematic.")]
         public bool ForceDisableKinematicOnDrop = false;
 
+        [Tooltip("If true, the object will instantly position / rotate to the grabber instead of using velocity / force. This will only happen if no collisions have recently occurred. When using this method, the Grabbable's Rigidbody willbe instantly rotated / moved, taking in to account the interpolation settings. May clip through objects if moving fast enough.")]
+        public bool InstantMovement = false;
+
+        [Tooltip("If true, all child colliders will be considered Grabbable. If false, you will need to add the 'GrabbableChild' component to any child colliders that you wish to also be considered grabbable.")]
+        public bool MakeChildCollidersGrabbable = false;
+
+        [Header("Default Hand Pose")]
+        [Tooltip("A hand controller can read this value to determine how to animate when grabbing this object. 'AnimatorID' = specify an Animator ID to be set on the hand animator after grabbing this object. 'HandPose' = use a HandPose scriptable object. 'AutoPoseOnce' = DO an auto pose one time upon grabbing this object. 'AutoPoseContinuous' = Keep running attempting an autopose while grabbing this item.")]
+        public HandPoseType handPoseType = HandPoseType.HandPose;
+        protected HandPoseType initialHandPoseType;
+
+        [Tooltip("If HandPoseType = 'HandPose', this HandPose object will be applied to the hand on pickup")]
+        public HandPose SelectedHandPose;
+        protected HandPose initialHandPose;
+
         /// <summary>
         /// Animator ID of the Hand Pose to use
         /// </summary>
-        [Header("Default Hand Pose")]
         [Tooltip("This HandPose Id will be passed to the Hand Animator when equipped. You can add new hand poses in the HandPoseDefinitions.cs file.")]
         public HandPoseId CustomHandPose = HandPoseId.Default;
-        HandPoseId initialHandPoseId;
+        protected HandPoseId initialHandPoseId;
 
         /// <summary>
         /// What to do if another grabber grabs this while equipped. DualGrab is currently unsupported.
         /// </summary>
-        [Header("Secondary Grab")]
-        [Tooltip("What to do if another grabber grabs this while equipped. DualGrab is currently unsupported.")]
-        public OtherGrabBehavior SecondaryGrabBehavior = OtherGrabBehavior.None;        
+        [Header("Two-Handed Grab Behavior")]
+        [Tooltip("What to do if another grabber grabs this while equipped.")]
+        public OtherGrabBehavior SecondaryGrabBehavior = OtherGrabBehavior.None;
+
+        [Tooltip("How to behave when two hands are grabbing this object. LookAt = Have the primary Grabber 'LookAt' the secondary grabber. For example, holding a rifle in the right controller will have it rotate towards the left controller. AveragePositionRotation = Use a point and rotation in space that is half-way between both grabbers.")]
+        public TwoHandedPositionType TwoHandedPosition = TwoHandedPositionType.Lerp;
+
+        [Tooltip("How far to lerp between grabber positions. For example, 0.5 = halfway between the primary and secondary grabber. 0 = use the primary grabber's position, 1 = use the secondary grabber's position.")]
+        [Range(0.0f, 1f)]
+        public float TwoHandedPostionLerpAmount = 0.5f;
+
+        [Tooltip("How to behave when two hands are grabbing this object. LookAt = Have the primary Grabber 'LookAt' the secondary grabber. For example, holding a rifle in the right controller will have it rotate towards the left controller. AveragePositionRotation = Use a point and rotation in space that is half-way between both grabbers.")]
+        public TwoHandedRotationType TwoHandedRotation = TwoHandedRotationType.Slerp;
+        
+        [Tooltip("How far to lerp / slerp between grabber rotation. For example, 0.5 = halfway between the primary and secondary grabber. 0 = use the primary grabber's rotation, 1 = use the secondary grabber's position.")]
+        [Range(0.0f, 1f)]
+        public float TwoHandedRotationLerpAmount = 0.5f;
+
+        [Tooltip("How to repond if you are holding an object with two hands, and then drop the primary grabber. For example, you may want to drop the object, transfer it to the second hand, or do nothing at all.")]
+        public TwoHandedDropMechanic TwoHandedDropBehavior = TwoHandedDropMechanic.Drop;
+
+        [Tooltip("Which vector to use when TwoHandedRotation = LookAtSecondary. Ex : Horizontal = A rifle type setup where you want to aim down the sites; Vertical = A melee type setup where the object is vertical")]
+        public TwoHandedLookDirection TwoHandedLookVector = TwoHandedLookDirection.Horizontal;        
+
+        [Tooltip("How quickly to Lerp towards the SecondaryGrabbable if TwoHandedGrabBehavior = LookAt")]
+        public float SecondHandLookSpeed = 40f;
+
+        [Header("Secondary Grabbale Object")]
+        [Tooltip("If specified, this object will be used as a secondary grabbable instead of relying on grab points on this object. If 'TwoHandedGrabBehavior' is specified as LookAt, this is the object the grabber will be rotated towards. If 'TwoHandedGrabBehavior' is specified as AveragePositionRotation, this is the object the grabber use to calculate position.")]
+        public Grabbable SecondaryGrabbable;        
 
         /// <summary>
         /// The Grabbable can only be grabbed if this grabbable is being held.
         /// Example : If you only want a weapon part to be grabbable if the weapon itself is being held.
         /// </summary>
+        [Header("Grab Restrictions")]
         [Tooltip("The Grabbable can only be grabbed if this grabbable is being held. Example : If you only want a weapon part to be grabbable if the weapon itself is being held.")]
         public Grabbable OtherGrabbableMustBeGrabbed = null;
-
-
-        [Header("Secondary Grab Look Settings")]
-        [Tooltip("Look at this object if it is being held. For example, a rifle may look at a Grabable Grip on the object.")]
-        public Grabbable SecondaryGrabbable;
-
-        [Tooltip("How quickly to Lerp towards the SecondaryGrabbable")]
-        public float SecondHandLookSpeed = 40f;
-
 
         [Header("Physics Joint Settings")]
         /// <summary>
@@ -223,7 +270,7 @@ namespace BNG {
 
         [Header("Velocity Grab Settings")]
         public float MoveVelocityForce = 3000f;
-        public float MoveAngularVelocityForce = 90f;       
+        public float MoveAngularVelocityForce = 90f;
 
         /// <summary>
         /// Time in seconds (Time.time) when we last grabbed this item
@@ -247,43 +294,51 @@ namespace BNG {
         // Total distance between the Grabber and Grabbable.
         float journeyLength;
 
-        public float OriginalScale { get; private set; }
+        public Vector3 OriginalScale { get; private set; }
 
         // Keep track of objects that are colliding with us
         [Header("Shown for Debug : ")]
         [SerializeField]
-        List<Collider> collisions;
+        public List<Collider> collisions;
 
         // Last time in seconds (Time.time) since we had a valid collision
-        float lastCollisionSeconds;
+        public float lastCollisionSeconds { get; protected set; }
 
         /// <summary>
         /// How many seconds we've gone without collisions
         /// </summary>
-        float lastNoCollisionSeconds;
+        public float lastNoCollisionSeconds { get; protected set; }
+
+        /// <summary>
+        /// Have we recently collided with an object
+        /// </summary>
+        public bool RecentlyCollided { 
+            get {
+                if(Time.time - lastCollisionSeconds <= 0.1f) {
+                    return true;
+                }
+
+                if(collisions != null && collisions.Count > 0) {
+                    return true;
+                }
+                return false;
+            } 
+        }
 
         // If Time.time < requestSpringTime, force joint to be springy
-        float requestSpringTime;
+        public float requestSpringTime { get; protected set; }
 
         /// <summary>
         /// If Grab Mechanic is set to Snap, set position and rotation to this Transform on the primary Grabber
         /// </summary>
-        Transform primaryGrabOffset;
+        protected Transform primaryGrabOffset;
+        protected Transform secondaryGrabOffset;
 
         /// <summary>
         /// Returns the active GrabPoint component if object is held and a GrabPoint has been assigneed
         /// </summary>
         [HideInInspector]
         public GrabPoint ActiveGrabPoint;        
-
-        /// <summary>
-        /// Considered grabbing with two-hands if the SecondaryGrabbable is being held
-        /// </summary>
-        bool grabbingTwoHands {
-            get {
-                return SecondaryGrabbable != null && SecondaryGrabbable.BeingHeld;
-            }
-        }        
 
         [HideInInspector]
         public Vector3 SecondaryLookOffset;
@@ -296,7 +351,7 @@ namespace BNG {
 
         Vector3 grabPosition {
             get {
-                if(primaryGrabOffset != null) {
+                if (primaryGrabOffset != null) {
                     return primaryGrabOffset.position;
                 }
                 else {
@@ -325,15 +380,13 @@ namespace BNG {
                 return Vector3.zero;
             }
         }
-       
+
         private Transform _grabTransform;
-        
+
         // Position this on the grabber to get a precise location
-        public Transform grabTransform
-        {
-            get
-            {
-                if(_grabTransform != null) {
+        public Transform grabTransform {
+            get {
+                if (_grabTransform != null) {
                     return _grabTransform;
                 }
 
@@ -341,9 +394,28 @@ namespace BNG {
                 _grabTransform.parent = this.transform;
                 _grabTransform.name = "Grab Transform";
                 _grabTransform.localPosition = Vector3.zero;
-                _grabTransform.hideFlags = HideFlags.HideInHierarchy;
+                // _grabTransform.hideFlags = HideFlags.HideInHierarchy;
 
                 return _grabTransform;
+            }
+        }
+
+        private Transform _grabTransformSecondary;
+
+        // Position this on the grabber to get a precise location
+        public Transform grabTransformSecondary {
+            get {
+                if (_grabTransformSecondary != null) {
+                    return _grabTransformSecondary;
+                }
+
+                _grabTransformSecondary = new GameObject().transform;
+                _grabTransformSecondary.parent = this.transform;
+                _grabTransformSecondary.name = "Grab Transform Secondary";
+                _grabTransformSecondary.localPosition = Vector3.zero;
+                _grabTransformSecondary.hideFlags = HideFlags.HideInHierarchy;
+
+                return _grabTransformSecondary;
             }
         }
 
@@ -365,13 +437,12 @@ namespace BNG {
         }
         private bool _canBeMoved;
 
-        Transform originalParent;
-        InputBridge input;
-        ConfigurableJoint connectedJoint;
-        Vector3 previousPosition;
-        float lastItemTeleportTime;
-        bool recentlyTeleported;
-
+        protected Transform originalParent;
+        protected InputBridge input;
+        protected ConfigurableJoint connectedJoint;
+        protected Vector3 previousPosition;
+        protected float lastItemTeleportTime;
+        protected bool recentlyTeleported;
 
         /// <summary>
         /// Set this to false if you need to see Debug field or don't want to use the custom inspector
@@ -388,9 +459,15 @@ namespace BNG {
             }
         }
         private BNGPlayerController _player;
-        Collider col;
-        Rigidbody rigid;
-        Grabber flyingTo;
+        protected Collider col;
+        protected Rigidbody rigid;
+
+        public Grabber FlyingToGrabber {
+            get {
+                return flyingTo;
+            }
+        }
+        protected Grabber flyingTo;
 
         protected List<GrabbableEvents> events;
 
@@ -399,9 +476,9 @@ namespace BNG {
                 return didParentHands;
             }
         }
-        bool didParentHands = false;                
+        protected bool didParentHands = false;
 
-        void Awake() {
+        protected void Awake() {
             col = GetComponent<Collider>();
             rigid = GetComponent<Rigidbody>();
             input = InputBridge.Instance;
@@ -420,52 +497,50 @@ namespace BNG {
                 initialInterpolationMode = rigid.interpolation;
                 wasKinematic = rigid.isKinematic;
                 usedGravity = rigid.useGravity;
+
+                // Allow our rigidbody to rotate quickly
+                rigid.maxAngularVelocity = 25f;
             }
-            
+
             // Store initial parent so we can reset later if needed
             UpdateOriginalParent(transform.parent);
 
             validGrabbers = new List<Grabber>();
 
-            OriginalScale = transform.localScale.x;
+            // Set Original Scale based in World coordinates if available
+            if (transform.parent != null) {
+                OriginalScale = transform.parent.TransformVector(transform.localScale);
+            }
+            else {
+                OriginalScale = transform.localScale;
+            }
+
             initialHandPoseId = CustomHandPose;
+            initialHandPose = SelectedHandPose;
+            initialHandPoseType = handPoseType;
 
             // Store movement status
             _canBeMoved = canBeMoved();
-        }
 
-        void Update() {
-
-            if(remoteGrabbing) {
-                Vector3 grabbablePosition = transform.position;
-                Vector3 grabberPosition = getGrabberWithOffsetWorldPosition(flyingTo);
-
-                Quaternion remoteRotation = getRemoteRotation(flyingTo);
-                float dist = Vector3.Distance(grabbablePosition, grabberPosition);
-
-                // reached destination, snap to final transform position
-                // Typically this won't be hit as the Grabber trigger will pick it up first
-                if (dist <= 0.002f) {
-                    movePosition(grabberPosition);
-                    moveRotation(grabTransform.rotation);
-
-                    if (flyingTo != null) {
-                        flyingTo.GrabGrabbable(this);
+            // Set up any Child Grabbable Objects
+            if(MakeChildCollidersGrabbable) {
+                Collider[] cols = GetComponentsInChildren<Collider>();
+                for(int x = 0; x < cols.Length; x++) {
+                    // Make child Grabbable if it isn't already
+                    if (cols[x].GetComponent<Grabbable>() == null && cols[x].GetComponent<GrabbableChild>() == null) {
+                        var gc = cols[x].gameObject.AddComponent<GrabbableChild>();
+                        gc.ParentGrabbable = this;
                     }
                 }
-                // Getting close so speed up
-                else if (dist < 0.05f) {
-                    movePosition(Vector3.Lerp(transform.position, grabberPosition, Time.deltaTime * GrabSpeed * 1.5f));
-                    moveRotation(Quaternion.Slerp(transform.rotation, remoteRotation, Time.deltaTime * GrabSpeed * 1.5f));
-                }
-                // Normal Lerp
-                else {
-                    movePosition(Vector3.Lerp(transform.position, grabberPosition, Time.deltaTime * GrabSpeed));
-                    moveRotation(Quaternion.Slerp(transform.rotation, remoteRotation, Time.deltaTime * GrabSpeed));
-                }
             }
+        }        
+
+        public virtual void Update() {
 
             if (BeingHeld) {
+
+                // ResetLockResets();
+
                 // Something happened to our Grabber. Drop the item
                 if (heldByGrabbers == null) {
                     DropItem(null, true, true);
@@ -475,17 +550,20 @@ namespace BNG {
                 // Make sure all collisions are valid
                 filterCollisions();
 
+                // Cache PrimaryGrabber designation
+                _priorPrimaryGrabber = GetPrimaryGrabber();
+
                 // Update collision time
-                if(collisions != null && collisions.Count > 0) {
+                if (collisions != null && collisions.Count > 0) {
                     lastCollisionSeconds = Time.time;
                     lastNoCollisionSeconds = 0;
                 }
-                else if(collisions != null && collisions.Count <= 0) {
+                else if (collisions != null && collisions.Count <= 0) {
                     lastNoCollisionSeconds += Time.deltaTime;
                 }
 
                 // Update item recently teleported time
-                if(Vector3.Distance(transform.position, previousPosition) > 0.1f) {
+                if (Vector3.Distance(transform.position, previousPosition) > 0.1f) {
                     lastItemTeleportTime = Time.time;
                 }
                 recentlyTeleported = Time.time - lastItemTeleportTime < 0.2f;
@@ -502,9 +580,9 @@ namespace BNG {
                     }
 
                     // Should we drop the item if no longer holding the required Grabbable?
-                    if(OtherGrabbableMustBeGrabbed != null && !OtherGrabbableMustBeGrabbed.BeingHeld) {
+                    if (OtherGrabbableMustBeGrabbed != null && !OtherGrabbableMustBeGrabbed.BeingHeld) {
                         // Fixed joints work ok. Configurable Joints have issues
-                        if(GetComponent<ConfigurableJoint>() != null) {
+                        if (GetComponent<ConfigurableJoint>() != null) {
                             DropItem(g, true, true);
                             break;
                         }
@@ -515,27 +593,36 @@ namespace BNG {
                 }
 
                 // Check to parent the hand models to the Grabbable
-                checkParentHands();
+                if(ParentHandModel && !didParentHands) {
+                    checkParentHands(GetPrimaryGrabber());
+                }
 
                 // Position Hands in proper place
-                positionHandGraphics();
+                positionHandGraphics(GetPrimaryGrabber());
 
                 // Rotate the grabber to look at our secondary object
-                checkSecondaryLook();
+                // JPTODO : Move this to physics updates
+                if(TwoHandedRotation == TwoHandedRotationType.LookAtSecondary && GrabPhysics == GrabPhysics.PhysicsJoint) {
+                    checkSecondaryLook();
+                }
 
                 // Keep track of where we were each frame
                 previousPosition = transform.position;
             }
-        }
+        }        
 
+        public virtual void FixedUpdate() {
 
-        void FixedUpdate() {
+            if (remoteGrabbing) {
+                UpdateRemoteGrab();
+            }
+
             if (BeingHeld) {
 
                 // Reset all collisions every physics update
                 // These are then populated in OnCollisionEnter / OnCollisionStay to make sure we have the most up to date collision info
                 // This can create garbage so only do this if we are holding the object
-                if(BeingHeld && collisions != null && collisions.Count > 0) {
+                if (BeingHeld && collisions != null && collisions.Count > 0) {
                     collisions = new List<Collider>();
                 }
 
@@ -553,28 +640,40 @@ namespace BNG {
                     UpdateVelocityPhysics();
                 }
             }
-        }
+        }        
 
-        Vector3 getGrabberWithOffsetWorldPosition(Grabber grabber) {
+        public virtual Vector3 GetGrabberWithGrabPointOffset(Grabber grabber, Transform grabPoint) {
+            // Sanity check
+            if(grabber == null) {
+                return Vector3.zero;
+            }
+
+            // Get the Grabber's position, offset by a grab point
             Vector3 grabberPosition = grabber.transform.position;
-
-            // If there is a GrabPoint then we should offset the destination
-            Transform grabPoint = GetClosestGrabPoint(grabber);
             if (grabPoint != null) {
-                Vector3 localOffset = transform.position - grabPoint.position;
-                grabberPosition += localOffset;
+                grabberPosition += transform.position - grabPoint.position;
             }
 
             return grabberPosition;
+
         }
 
-        void positionHandGraphics() {           
+        public virtual Quaternion GetGrabberWithOffsetWorldRotation(Grabber grabber) {
 
+            if(grabber != null) {
+                return grabber.transform.rotation;
+            }
+
+            return Quaternion.identity;
+        }
+
+        protected void positionHandGraphics(Grabber g) {
             if (ParentHandModel && didParentHands) {
-                if (GrabMechanic == GrabType.Snap) {
-                    Grabber g = GetPrimaryGrabber();
-                    g.HandsGraphics.localPosition = g.handsGraphicsGrabberOffset;
-                    g.HandsGraphics.localEulerAngles = Vector3.zero;
+                if (GrabMechanic == GrabType.Snap) {                    
+                    if(g != null) {
+                        g.HandsGraphics.localPosition = g.handsGraphicsGrabberOffset;
+                        g.HandsGraphics.localEulerAngles = Vector3.zero;
+                    }
                 }
             }
         }
@@ -591,7 +690,12 @@ namespace BNG {
             }
 
             // Not valid if being held and the object has no secondary grab behavior
-            if(BeingHeld == true && SecondaryGrabBehavior == OtherGrabBehavior.None) {
+            if (BeingHeld == true && SecondaryGrabBehavior == OtherGrabBehavior.None) {
+                return false;
+            }
+
+            // Not Grabbable if set as DualGrab, but secondary grabbable has been specified. This means we can't use a grab point on this object
+            if (BeingHeld == true && SecondaryGrabBehavior == OtherGrabBehavior.DualGrab && SecondaryGrabbable != null) {
                 return false;
             }
 
@@ -603,37 +707,209 @@ namespace BNG {
             return true;
         }
 
+        public virtual void UpdateRemoteGrab() {
+            
+            // Linear Movement
+            if(RemoteGrabMechanic == RemoteGrabMovement.Linear) {
+                CheckRemoteGrabLinear();
+            }
+            else if (RemoteGrabMechanic == RemoteGrabMovement.Velocity) {
+                CheckRemoteGrabVelocity();
+            }
+            else if (RemoteGrabMechanic == RemoteGrabMovement.Flick) {
+                CheckRemoteGrabFlick();
+            }
+        }
+
+        public virtual void CheckRemoteGrabLinear() {
+            // Bail early if we're not remote grabbing this item
+            if (!remoteGrabbing) {
+                return;
+            }
+
+            // Move the object linearly as a kinematic rigidbody
+            if (rigid && !rigid.isKinematic) {
+                rigid.collisionDetectionMode = CollisionDetectionMode.Discrete;
+                rigid.isKinematic = true;
+            }
+
+            Vector3 grabberPosition = GetGrabberWithGrabPointOffset(flyingTo, GetClosestGrabPoint(flyingTo));
+            Quaternion remoteRotation = getRemoteRotation(flyingTo);
+            float distance = Vector3.Distance(transform.position, grabberPosition);
+
+            // reached destination, snap to final transform position
+            // Typically this won't be hit as the Grabber trigger will pick it up first
+            if (distance <= 0.002f) {
+                movePosition(grabberPosition);
+                moveRotation(grabTransform.rotation);
+
+                if (rigid) {
+                    rigid.velocity = Vector3.zero;
+                }
+
+                if (flyingTo != null) {
+                    flyingTo.GrabGrabbable(this);
+                }
+            }
+            // Getting close so speed up
+            else if (distance < 0.03f) {
+                movePosition(Vector3.MoveTowards(transform.position, grabberPosition, Time.fixedDeltaTime * GrabSpeed * 2f));
+                moveRotation(Quaternion.Slerp(transform.rotation, remoteRotation, Time.fixedDeltaTime * GrabSpeed * 2f));
+            }
+            // Normal Lerp
+            else {
+                movePosition(Vector3.Lerp(transform.position, grabberPosition, Time.fixedDeltaTime * GrabSpeed));
+                moveRotation(Quaternion.Slerp(transform.rotation, remoteRotation, Time.fixedDeltaTime * GrabSpeed));
+            }
+        }
+
+        public virtual void CheckRemoteGrabVelocity() {
+            if (remoteGrabbing) {
+
+                Vector3 grabberPosition = GetGrabberWithGrabPointOffset(flyingTo, GetClosestGrabPoint(flyingTo));
+                Quaternion remoteRotation = getRemoteRotation(flyingTo);
+                float distance = Vector3.Distance(transform.position, grabberPosition);
+
+                // Move the object with velocity, without using gravity
+                if (rigid && rigid.useGravity) {
+                    rigid.useGravity = false;
+
+                    // Snap rotation once
+                    // transform.rotation = remoteRotation;
+                }
+
+                // reached destination, snap to final transform position
+                // Typically this won't be hit as the Grabber trigger will pick it up first
+                if (distance <= 0.0025f) {
+                    movePosition(grabberPosition);
+                    moveRotation(grabTransform.rotation);
+
+                    if (rigid) {
+                        rigid.velocity = Vector3.zero;
+                    }
+
+                    if (flyingTo != null) {
+                        flyingTo.GrabGrabbable(this);
+                    }
+                }
+                else {
+                    // Move with velocity
+                    Vector3 positionDelta = grabberPosition - transform.position;
+
+                    // Move towards hand using velocity
+                    rigid.velocity = Vector3.MoveTowards(rigid.velocity, (positionDelta * MoveVelocityForce) * Time.fixedDeltaTime, 1f);
+
+                    rigid.MoveRotation(Quaternion.Slerp(rigid.rotation, GetGrabbersAveragedRotation(), Time.fixedDeltaTime * GrabSpeed));
+                    //rigid.angularVelocity = Vector3.zero;
+                    //moveRotation(Quaternion.Slerp(transform.rotation, remoteRotation, Time.fixedDeltaTime * GrabSpeed));
+                }
+            }
+        }
+
+
+        bool initiatedFlick = false;
+        // Angular Velocity required to start the flick force
+        float flickStartVelocity = 1.5f;
+
+        /// <summary>
+        /// How long in seconds the object should take to jump to the grabber when using the Flick remote grab type
+        /// </summary>
+        float FlickSpeed = 0.5f;
+
+        public float lastFlickTime;
+
+        public virtual void InitiateFlick() {
+
+            initiatedFlick = true;
+
+            lastFlickTime = Time.time;
+
+            Vector3 grabberPosition = flyingTo.transform.position;// GetGrabberWithGrabPointOffset(flyingTo, GetClosestGrabPoint(flyingTo));
+            Quaternion remoteRotation = getRemoteRotation(flyingTo);
+            float distance = Vector3.Distance(transform.position, grabberPosition);
+
+            // Defauult to 1, but speed up if close
+            float timeToGrab = FlickSpeed;
+            if (distance < 1f) {
+                timeToGrab = FlickSpeed / 1.5f;
+            }
+            else if (distance < 0.5f) {
+                timeToGrab = FlickSpeed / 3;
+            }
+
+            Vector3 vel = GetVelocityToHitTargetByTime(transform.position, grabberPosition, Physics.gravity * 1.1f, timeToGrab);
+
+            rigid.velocity = vel;
+            // rigid.AddForce(vel, ForceMode.VelocityChange);
+
+            // No longer initiated flick
+            initiatedFlick = false;
+        }
+
+        public Vector3 GetVelocityToHitTargetByTime(Vector3 startPosition, Vector3 targetPosition, Vector3 gravityBase, float timeToTarget) {
+
+            Vector3 direction = targetPosition - startPosition;
+            Vector3 horizontal = Vector3.Project(direction, Vector3.Cross(gravityBase, Vector3.Cross(direction, gravityBase)));
+            
+            float horizontalDistance = horizontal.magnitude;
+            float horizontalSpeed = horizontalDistance / timeToTarget;
+
+            Vector3 vertical = Vector3.Project(direction, gravityBase);
+            float verticalDistance = vertical.magnitude * Mathf.Sign(Vector3.Dot(vertical, -gravityBase));
+            float verticalSpeed = (verticalDistance + ((0.5f * gravityBase.magnitude) * (timeToTarget * timeToTarget))) / timeToTarget;
+
+            return (horizontal.normalized * horizontalSpeed) - (gravityBase.normalized * verticalSpeed);
+        }
+
+        public virtual void CheckRemoteGrabFlick() {
+            if(remoteGrabbing) {
+
+                // Have we initiated a flick yet?
+                if(!initiatedFlick) {
+                    // Get angular velocity from controller
+                    if(InputBridge.Instance.GetControllerAngularVelocity(flyingTo.HandSide).magnitude >= flickStartVelocity) {
+                        // Must be at least some time between flicks
+                        if(Time.time - lastFlickTime >= 0.1f) {
+                            InitiateFlick();
+                        }
+                    }
+                }
+            }
+            else {
+                initiatedFlick = false;
+            }
+        }
+
+        public float FlickForce = 1f;
+
         public virtual void UpdateFixedJoints() {
             // Set to continuous dynamic while being held
-            if (rigid.isKinematic) {
+            if (rigid != null && rigid.isKinematic) {
                 rigid.collisionDetectionMode = CollisionDetectionMode.Discrete;
+            }
+            else {
+                rigid.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             }
 
             // Adjust item velocity. This smooths out forces while becoming rigid
             if (ApplyCorrectiveForce) {
                 moveWithVelocity();
-            }
-
-            // Set parent to us to keep movement smoothed
-            bool recentCollision = Time.time - lastCollisionSeconds <= 0.1f;
-            if (ParentToHands && !recentCollision) {
-                transform.parent = GetPrimaryGrabber().transform;
-            }
-            else if (ParentToHands && recentCollision) {
-                transform.parent = null;
-            }
+            }           
         }
 
         public virtual void UpdatePhysicsJoints() {
 
             // Bail if no joint connected
-            if(connectedJoint == null) {
+            if (connectedJoint == null || rigid == null) {
                 return;
             }
 
             // Set to continuous dynamic while being held
             if (rigid.isKinematic) {
                 rigid.collisionDetectionMode = CollisionDetectionMode.Discrete;
+            }
+            else {
+                rigid.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             }
 
             // Update Joint poisition in real time
@@ -652,7 +928,7 @@ namespace BNG {
 
             // Nothing touching it so we can stick to hand rigidly
             // Two-Handed weapons currently react much more smoothly if the joint is rigid, due to how the LookAt system works
-            if ((grabbingTwoHands || afterCollision) && !forceSpring) {
+            if ((BeingHeldWithTwoHands || afterCollision) && !forceSpring) {
                 // Lock Angular, XYZ Motion
                 // Make joint very rigid
                 connectedJoint.rotationDriveMode = RotationDriveMode.Slerp;
@@ -677,24 +953,9 @@ namespace BNG {
                 // Slerp drive used for rotation
                 setSlerpDrive(CollisionSlerp, 10f);
 
-                bool recentCollision = Time.time - lastCollisionSeconds <= 0.1f;
-                bool playerRecentlyMoved = false;
-                if (player != null) {
-                    playerRecentlyMoved = player.RecentlyMoved();
-                }
-
                 // Adjust item velocity. This smooths out forces while becoming rigid
-                if(ApplyCorrectiveForce) {
+                if (ApplyCorrectiveForce) {
                     moveWithVelocity();
-                }
-
-                // Set parent to us to keep movement smoothed
-                if (ParentToHands && playerRecentlyMoved && !recentCollision) {
-                    Grabber g = GetPrimaryGrabber();
-                    transform.parent = g.transform;
-                }
-                else if (ParentToHands && !playerRecentlyMoved) {
-                    transform.parent = null;
                 }
             }
             else {
@@ -716,27 +977,29 @@ namespace BNG {
 
                 // Slerp drive used for rotation
                 setSlerpDrive(CollisionSlerp, 5f);
-
-                // No parent if we are in contact with something. Player movement should be independent
-                if (ParentToHands) {
-                    transform.parent = null;
-                }
             }
 
-            // This prevents the grabbable from being super far away if we teleported while the Grabbable was also colliding with an object
-            if(recentlyTeleported && ParentToHands) {
-                Grabber g = GetPrimaryGrabber();
-                transform.parent = g.transform;
+            if(BeingHeldWithTwoHands && SecondaryLookAtTransform != null) {
+                connectedJoint.angularXMotion = ConfigurableJointMotion.Free;
 
-                // Large Distance, snap to close to grabber position so joint can pull us back into position
-                if (Vector3.Distance(transform.position, previousPosition) > 0.2f) {
-                    // Using localPosition instead of RigidBody .MovePosition() so we can move through objects
-                    transform.localPosition = Vector3.zero;
+                setSlerpDrive(1000f, 2f);
+                connectedJoint.angularYMotion = ConfigurableJointMotion.Limited;
+
+
+                connectedJoint.angularZMotion = ConfigurableJointMotion.Limited;
+
+                if (TwoHandedRotation == TwoHandedRotationType.LookAtSecondary) {
+                    checkSecondaryLook();
                 }
             }
         }
 
         void setPositionSpring(float spring, float damper) {
+
+            if(connectedJoint == null) {
+                return;
+            }
+
             JointDrive xDrive = connectedJoint.xDrive;
             xDrive.positionSpring = spring;
             xDrive.positionDamper = damper;
@@ -754,41 +1017,89 @@ namespace BNG {
         }
 
         void setSlerpDrive(float slerp, float damper) {
-            JointDrive slerpDrive = connectedJoint.slerpDrive;
-            slerpDrive.positionSpring = slerp;
-            slerpDrive.positionDamper = damper;
-            connectedJoint.slerpDrive = slerpDrive;
-        }       
+            if(connectedJoint) {
+                JointDrive slerpDrive = connectedJoint.slerpDrive;
+                slerpDrive.positionSpring = slerp;
+                slerpDrive.positionDamper = damper;
+                connectedJoint.slerpDrive = slerpDrive;
+            }
+        }
+        
+        public virtual Vector3 GetGrabberVector3(Grabber grabber, bool isSecondary) {
+            // Snap
+            if (GrabMechanic == GrabType.Snap) {
+                return GetGrabberWithGrabPointOffset(grabber, isSecondary ? secondaryGrabOffset : primaryGrabOffset);
+            }
+            // Precise
+            else {
+                if (isSecondary) {
+                    return grabTransformSecondary.position;
+                }
+
+                return grabTransform.position;
+            }
+        }
+
+        public virtual Quaternion GetGrabberQuaternion(Grabber grabber, bool isSecondary) {
+
+            if (GrabMechanic == GrabType.Snap) {
+                return GetGrabberWithOffsetWorldRotation(grabber);
+            }
+            else {
+                if (isSecondary) {
+                    return grabTransformSecondary.rotation;
+                }
+
+                return grabTransform.rotation;
+            }
+        }
 
         /// <summary>
-        /// Apply a velocity on our Grabbable towards out Grabber
+        /// Apply a velocity on our Grabbable towards our Grabber
         /// </summary>
         void moveWithVelocity() {
 
-            Vector3 positionDelta;
-            if (GrabMechanic == GrabType.Snap) {
-                positionDelta = (getGrabberWithOffsetWorldPosition(GetPrimaryGrabber()) - transform.position);
+            if(rigid == null) { return; }
+            
+            Vector3 destination = GetGrabbersAveragedPosition();
+
+            float distance = Vector3.Distance(transform.position, destination);
+
+            if (distance > 0.002f) {
+                Vector3 positionDelta = destination - transform.position;
+
+                // Move towards hand using velocity
+                rigid.velocity = Vector3.MoveTowards(rigid.velocity, (positionDelta * MoveVelocityForce) * Time.fixedDeltaTime, 1f);
             }
             else {
-                positionDelta = grabTransform.position - transform.position;
-            }
-
-            // Move towards hand using velocity
-            rigid.velocity = Vector3.MoveTowards(rigid.velocity, (positionDelta * MoveVelocityForce) * Time.deltaTime, 1f);
+                // Very close - just move object right where it needs to be and set velocity to 0 so it doesn't overshoot
+                rigid.MovePosition(destination);
+                rigid.velocity = Vector3.zero;
+            }            
         }
+
+        float angle;
+        Vector3 axis, angularTarget, angularMovement;
 
         void rotateWithVelocity() {
 
-            Quaternion rotationDelta;
-            if (GrabMechanic == GrabType.Snap) {
-                rotationDelta = GetPrimaryGrabber().transform.rotation * Quaternion.Inverse(transform.rotation);
-            }
-            else {
-                rotationDelta = grabTransform.rotation * Quaternion.Inverse(transform.rotation);
+            if(rigid == null) {
+                return;
             }
 
-            float angle;
-            Vector3 axis;
+            bool noRecentCollisions = collisions != null && collisions.Count == 0 && lastNoCollisionSeconds >= 0.5f;
+            bool moveInstantlyOneHand = InstantMovement; // MoveAngularVelocityForce >= 200f;
+            bool moveInstantlyTwoHands = BeingHeldWithTwoHands && InstantMovement; // TwoHandedRotation == TwoHandedRotationType.LookAtSecondary && SecondHandLookSpeed > 20;
+
+            if (InstantMovement == true && noRecentCollisions && (moveInstantlyOneHand || moveInstantlyTwoHands)) {
+                //rigid.rotation = GetGrabbersAveragedRotation();
+                rigid.MoveRotation(Quaternion.Slerp(rigid.rotation, GetGrabbersAveragedRotation(), Time.fixedDeltaTime * SecondHandLookSpeed));
+
+                // Can exit immediately
+                return;
+            }
+
+            Quaternion rotationDelta = GetGrabbersAveragedRotation() * Quaternion.Inverse(transform.rotation);
             rotationDelta.ToAngleAxis(out angle, out axis);
 
             // Use closest rotation. If over 180 degrees, rotate the other way
@@ -797,10 +1108,99 @@ namespace BNG {
             }
 
             if (angle != 0) {
-                Vector3 angularTarget = angle * axis;
-                angularTarget = (angularTarget * MoveAngularVelocityForce) * Time.deltaTime;
-                rigid.angularVelocity = Vector3.MoveTowards(rigid.angularVelocity, angularTarget, MoveAngularVelocityForce);
+                angularTarget = angle * axis;
+                angularTarget = (angularTarget * MoveAngularVelocityForce) * Time.fixedDeltaTime;
+
+                angularMovement = Vector3.MoveTowards(rigid.angularVelocity, angularTarget, MoveAngularVelocityForce);
+
+                if (angularMovement.magnitude > 0.05f) {
+                    // rigid.centerOfMass = transform.InverseTransformPoint(GetGrabbersAveragedPosition());
+                    rigid.angularVelocity = angularMovement;
+                }
+
+                // Snap in place if very close
+                if(angle < 1) {
+                    rigid.MoveRotation(GetGrabbersAveragedRotation());
+                    rigid.angularVelocity = Vector3.zero;
+                }
             }
+        }
+
+        /// <summary>
+        /// Get the estimated world position of the grabber(s) holding this object. Position factors in 2-Handed grabbing options
+        /// </summary>
+        /// <returns>World position og the grabber, with two handed behavior factored in.</returns>
+        public Vector3 GetGrabbersAveragedPosition() {
+            // Start with our primary Grabber
+            Vector3 destination = GetGrabberVector3(GetPrimaryGrabber(), false);
+
+            // Add secondary grabber position
+            if (SecondaryGrabBehavior == OtherGrabBehavior.DualGrab && TwoHandedPosition == TwoHandedPositionType.Lerp) {
+                // Check Secondary Grabbable first
+                if (SecondaryGrabbable != null && SecondaryGrabbable.BeingHeld) {
+                    // Add secondary grab position
+                    destination = Vector3.Lerp(destination, SecondaryGrabbable.GetGrabberVector3(SecondaryGrabbable.GetPrimaryGrabber(), false), TwoHandedPostionLerpAmount);
+                }
+                // Check if a grabber is holding this object
+                else if (heldByGrabbers != null && heldByGrabbers.Count > 1) {
+                    destination = Vector3.Lerp(destination, GetGrabberVector3(heldByGrabbers[1], true), TwoHandedPostionLerpAmount);
+                }
+            }
+
+            // Return primary grabber position as default
+            return destination;
+        }
+
+        public Quaternion GetGrabbersAveragedRotation() {
+            // Start with our primary Grabber's rotation
+            Quaternion destination = GetGrabberQuaternion(GetPrimaryGrabber(), false);
+
+            // Add secondary grabber position
+            // Check Lerp / Slerp Setting
+            if (SecondaryGrabBehavior == OtherGrabBehavior.DualGrab && TwoHandedRotation == TwoHandedRotationType.Lerp || TwoHandedRotation == TwoHandedRotationType.Slerp) {
+                // Check Secondary Grabbable first
+                if (SecondaryGrabbable != null && SecondaryGrabbable.BeingHeld) {
+                    if (TwoHandedRotation == TwoHandedRotationType.Lerp) {
+                        destination = Quaternion.Lerp(destination, SecondaryGrabbable.GetGrabberQuaternion(SecondaryGrabbable.GetPrimaryGrabber(), false), TwoHandedRotationLerpAmount);
+                    }
+                    else {
+                        destination = Quaternion.Slerp(destination, SecondaryGrabbable.GetGrabberQuaternion(SecondaryGrabbable.GetPrimaryGrabber(), false), TwoHandedRotationLerpAmount);
+                    }
+                }
+                // Check if a grabber is holding this object
+                else if (heldByGrabbers != null && heldByGrabbers.Count > 1) {
+                    if (TwoHandedRotation == TwoHandedRotationType.Lerp) {
+                        destination = Quaternion.Lerp(destination, GetGrabberQuaternion(heldByGrabbers[1], true), TwoHandedRotationLerpAmount);
+                    }
+                    else {
+                        destination = Quaternion.Slerp(destination, GetGrabberQuaternion(heldByGrabbers[1], true), TwoHandedRotationLerpAmount);
+                    }
+                }
+            }
+            // LookAt type
+            else if (SecondaryGrabBehavior == OtherGrabBehavior.DualGrab && TwoHandedRotation == TwoHandedRotationType.LookAtSecondary) {
+                // Rotate our primary grabber towards our secondary grabber
+                // Check Secondary Grabbable first
+                if (SecondaryGrabbable != null && SecondaryGrabbable.BeingHeld) {
+                    
+                    Vector3 targetVector = GetGrabberVector3(SecondaryGrabbable.GetPrimaryGrabber(), false) - GetGrabberVector3(GetPrimaryGrabber(), false);
+
+                    // Forward Direction
+                    if(TwoHandedLookVector == TwoHandedLookDirection.Horizontal) {
+                        destination = Quaternion.LookRotation(targetVector, -GetPrimaryGrabber().transform.up) * Quaternion.AngleAxis(180f, Vector3.up) * Quaternion.AngleAxis(180f, Vector3.forward);
+                    }
+                    // Do up / down
+                    else if(TwoHandedLookVector == TwoHandedLookDirection.Vertical) {
+                        destination = Quaternion.LookRotation(targetVector, -GetPrimaryGrabber().transform.right) * Quaternion.AngleAxis(90f, Vector3.right) * Quaternion.AngleAxis(180f, Vector3.forward) * Quaternion.AngleAxis(-90f, Vector3.up);
+                    }
+                }
+                // Check if a grabber is holding this object
+                else if (heldByGrabbers != null && heldByGrabbers.Count > 1) {
+                    // destination = Quaternion.Lerp(destination, GetGrabberQuaternion(heldByGrabbers[1], true), TwoHandedRotationLerpAmount);
+                }
+            }
+
+            return destination;
         }
 
         public virtual void UpdateKinematicPhysics() {
@@ -811,28 +1211,36 @@ namespace BNG {
             // How far along have we traveled
             float fractionOfJourney = distCovered / journeyLength;
 
+            Vector3 destination = GetGrabbersAveragedPosition();
+            Quaternion destRotation = grabTransform.rotation;
+
+            // Realtime update position to make it easier to preview grab transforms
+            bool realtime = Application.isEditor;
+            if(realtime) {
+                destination = getRemotePosition(GetPrimaryGrabber());
+                //destRotation = getRemoteRotation(GetPrimaryGrabber());
+                rotateGrabber(false);
+            }
+
             if (GrabMechanic == GrabType.Snap) {
                 // Set our position as a fraction of the distance between the markers.
                 Grabber g = GetPrimaryGrabber();
 
                 // Update local transform in real time
                 if (g != null) {
-                    if(ParentToHands) {
+                    if (ParentToHands) {
                         transform.localPosition = Vector3.Lerp(transform.localPosition, Vector3.zero - GrabPositionOffset, fractionOfJourney);
                         transform.localRotation = Quaternion.Lerp(transform.localRotation, grabTransform.localRotation, Time.deltaTime * 10);
                     }
                     // Position the object in world space using physics
                     else {
-                        Vector3 grabbablePosition = transform.position;
-                        Vector3 grabberPosition = getRemotePosition(g);
-
-                        movePosition(Vector3.Lerp(grabbablePosition, grabberPosition, fractionOfJourney));
-                        moveRotation(Quaternion.Lerp(transform.rotation, grabTransform.rotation, Time.deltaTime * 20));
+                        movePosition(Vector3.Lerp(transform.position, destination, fractionOfJourney));
+                        moveRotation(Quaternion.Lerp(transform.rotation, destRotation, Time.deltaTime * 20));
                     }
                 }
                 else {
-                    movePosition(Vector3.Lerp(transform.position, GrabPositionOffset, fractionOfJourney));
-                    transform.localRotation = Quaternion.Lerp(transform.localRotation, grabTransform.localRotation, Time.deltaTime * 10);
+                    movePosition(destination);
+                    transform.localRotation = grabTransform.localRotation;
                 }
             }
             else if (GrabMechanic == GrabType.Precise) {
@@ -844,26 +1252,36 @@ namespace BNG {
         public virtual void UpdateVelocityPhysics() {
 
             // Make sure rotation is always free
-            connectedJoint.xMotion = ConfigurableJointMotion.Free;
-            connectedJoint.yMotion = ConfigurableJointMotion.Free;
-            connectedJoint.zMotion = ConfigurableJointMotion.Free;
-            connectedJoint.angularXMotion = ConfigurableJointMotion.Free;
-            connectedJoint.angularYMotion = ConfigurableJointMotion.Free;
-            connectedJoint.angularZMotion = ConfigurableJointMotion.Free;
+            if(connectedJoint != null) {
+                connectedJoint.xMotion = ConfigurableJointMotion.Free;
+                connectedJoint.yMotion = ConfigurableJointMotion.Free;
+                connectedJoint.zMotion = ConfigurableJointMotion.Free;
+                connectedJoint.angularXMotion = ConfigurableJointMotion.Free;
+                connectedJoint.angularYMotion = ConfigurableJointMotion.Free;
+                connectedJoint.angularZMotion = ConfigurableJointMotion.Free;
+            }
 
             // Make sure linear spring is off
             // Set X,Y, and Z drive to our values
-            setPositionSpring(0, 0);
+            setPositionSpring(0, 0.5f);
 
             // Slerp drive used for rotation
-            setSlerpDrive(5, 0);
+            setSlerpDrive(5, 0.5f);
+
+            // Update collision detection mode to ContinuousDynamic while being held
+            if (rigid && rigid.isKinematic) {
+                rigid.collisionDetectionMode = CollisionDetectionMode.Discrete;
+            }
+            else if(rigid) {
+                rigid.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            }
 
             moveWithVelocity();
             rotateWithVelocity();
 
-            // Parent to our hands if no colliisions present
+            //Parent to our hands if no colliisions present
             // This makes our object move 1:1 with our controller
-            if(ParentToHands) {
+            if (ParentToHands) {
                 // Parent to hands if no collisions
                 bool afterCollision = collisions.Count == 0 && lastNoCollisionSeconds >= 0.2f;
                 // Set parent to us to keep movement smoothed
@@ -877,11 +1295,9 @@ namespace BNG {
             }
         }
 
-        void checkParentHands() {
+        void checkParentHands(Grabber g) {            
 
-            Grabber g = GetPrimaryGrabber();
-
-            if (ParentHandModel && !didParentHands && g != null) {
+            if (ParentHandModel && g != null) {
 
                 // Precise - Go ahead and parent hands model immediately 
                 if (GrabMechanic == GrabType.Precise) {
@@ -889,54 +1305,63 @@ namespace BNG {
                 }
                 // Snap - Hand Models if close enough
                 else {
+                    // Vector3 grabberPosition = g.transform.position;
+                    Vector3 grabberPosition = grabTransform.position;
                     Vector3 grabbablePosition = transform.position;
-                    Vector3 grabberPosition = g.transform.position;
-
-                    // If there is a GrabPoint then we should offset the destination
-                    Transform grabPoint = GetClosestGrabPoint(g);
-                    if (grabPoint != null) {
-                        grabberPosition += transform.position - grabPoint.position;
-                    }
 
                     float distance = Vector3.Distance(grabbablePosition, grabberPosition);
 
                     // If object can be moved towards the grabber, wait until the item is close before snapping hand to it
                     if (CanBeMoved) {
                         // Close enough to snap hand graphics
-                        if (distance < 0.007f) {
+                        if (distance < 0.001f ) {
                             // Snap position
                             parentHandGraphics(g);
-                        }                        
+
+                            // Snap Hand Model Position
+                            if (g.HandsGraphics != null) {
+                                g.HandsGraphics.localEulerAngles = Vector3.zero;
+                                g.HandsGraphics.localPosition = g.handsGraphicsGrabberOffset;
+                            }
+                        }
                     }
                     else {
                         // Can't be moved so go ahead and snap
                         if (grabTransform != null && distance < 0.1f) {
+
                             // Snap position
                             parentHandGraphics(g);
-                            positionHandGraphics();
+                            positionHandGraphics(g); 
 
-                            g.HandsGraphics.localEulerAngles = Vector3.zero;
-                            g.HandsGraphics.localPosition = g.handsGraphicsGrabberOffset;
+                            if (g.HandsGraphics != null) {
+                                g.HandsGraphics.localEulerAngles = Vector3.zero;
+                                g.HandsGraphics.localPosition = g.handsGraphicsGrabberOffset;
+                            }
                         }
                     }
                 }
             }
-        }               
+        }
 
         // Can this object be moved towards an object, or is it fixed in place / attached to something else
         bool canBeMoved() {
-            if(GetComponent<Joint>() != null) {
+
+            if (GetComponent<Rigidbody>() == null) {
+                return false;
+            }
+
+            if (GetComponent<Joint>() != null) {
                 return false;
             }
 
             return true;
         }
-                
+
         void checkSecondaryLook() {
 
             // Create transform to look at if we are looking at a precise grab
-            if(grabbingTwoHands) {
-                if(SecondaryLookAtTransform == null) {
+            if (BeingHeldWithTwoHands) {
+                if (SecondaryLookAtTransform == null) {
                     Grabber thisGrabber = GetPrimaryGrabber();
                     Grabber secondaryGrabber = SecondaryGrabbable.GetPrimaryGrabber();
 
@@ -944,7 +1369,7 @@ namespace BNG {
                     SecondaryLookAtTransform = o.transform;
                     SecondaryLookAtTransform.name = "LookAtTransformTemp";
                     // Precise grab can use current grabber position
-                    if(SecondaryGrabbable.GrabMechanic == GrabType.Precise) {
+                    if (SecondaryGrabbable.GrabMechanic == GrabType.Precise) {
                         SecondaryLookAtTransform.position = secondaryGrabber.transform.position;
                     }
                     // Otherwise use snap point
@@ -960,7 +1385,7 @@ namespace BNG {
                         SecondaryLookAtTransform.position = SecondaryGrabbable.transform.position;
                     }
 
-                    if(SecondaryLookAtTransform && thisGrabber) {
+                    if (SecondaryLookAtTransform && thisGrabber) {
                         SecondaryLookAtTransform.parent = thisGrabber.transform;
                         SecondaryLookAtTransform.localEulerAngles = Vector3.zero;
                         SecondaryLookAtTransform.localPosition = new Vector3(0, 0, SecondaryLookAtTransform.localPosition.z);
@@ -972,12 +1397,12 @@ namespace BNG {
             }
 
             // We should not be aiming at anything if a Grabbable was specified
-            if(SecondaryGrabbable != null && !SecondaryGrabbable.BeingHeld && SecondaryLookAtTransform != null) {
+            if (SecondaryGrabbable != null && !SecondaryGrabbable.BeingHeld && SecondaryLookAtTransform != null) {
                 clearLookAtTransform();
             }
 
             Grabber heldBy = GetPrimaryGrabber();
-            if(heldBy) {
+            if (heldBy) {
                 Transform grabberTransform = heldBy.transform;
 
                 if (SecondaryLookAtTransform != null) {
@@ -992,23 +1417,23 @@ namespace BNG {
                 else {
                     rotateGrabber(true);
                 }
-            }            
+            }
         }
 
         void rotateGrabber(bool lerp = false) {
             Grabber heldBy = GetPrimaryGrabber();
-            if(heldBy != null) {
+            if (heldBy != null) {
                 Transform grabberTransform = heldBy.transform;
 
-                if(lerp) {
-                    grabberTransform.localEulerAngles = angleLerp(grabberTransform.localEulerAngles, -GrabRotationOffset, Time.deltaTime * 20);
+                if (lerp) {
+                    grabberTransform.localRotation = Quaternion.Slerp(grabberTransform.localRotation, Quaternion.Inverse(Quaternion.Euler(GrabRotationOffset)), Time.deltaTime * 20);
                 }
                 else {
-                    grabberTransform.localEulerAngles = -GrabRotationOffset;
+                    grabberTransform.localRotation = Quaternion.Inverse(Quaternion.Euler(GrabRotationOffset));
                 }
             }
         }
-        
+
         public Transform GetGrabPoint() {
             return primaryGrabOffset;
         }
@@ -1016,94 +1441,143 @@ namespace BNG {
         public virtual void GrabItem(Grabber grabbedBy) {
 
             // Make sure we release this item
-            if(BeingHeld && SecondaryGrabBehavior != OtherGrabBehavior.DualGrab) {
+            if (BeingHeld && SecondaryGrabBehavior != OtherGrabBehavior.DualGrab) {
                 DropItem(false, true);
-            }            
+            }
 
-            // Make sure all values are reset first
-            ResetGrabbing();
+            bool isPrimaryGrab = !BeingHeld;
+            bool isSecondaryGrab = BeingHeld && SecondaryGrabBehavior == OtherGrabBehavior.DualGrab;
 
             // Officially being held
             BeingHeld = true;
             LastGrabTime = Time.time;
 
-            // Set where the item will move to on the grabber
-            primaryGrabOffset = GetClosestGrabPoint(grabbedBy);
+            // Primary Grabber just grabbed this item
+            if (isPrimaryGrab) {
+                // Make sure all values are reset first
+                ResetGrabbing();
 
-            // Set the active Grab Point that we will be using
-            if(primaryGrabOffset) {
-                ActiveGrabPoint = primaryGrabOffset.GetComponent<GrabPoint>();
-            }
-            else {
-                ActiveGrabPoint = null;
-            }
-            
-            // Update Hand Pose Id
-            if (primaryGrabOffset != null && ActiveGrabPoint != null) {
-                CustomHandPose = primaryGrabOffset.GetComponent<GrabPoint>().HandPose;
-            }
-            else {
-                CustomHandPose = initialHandPoseId;
-            }
+                // Set where the item will move to on the grabber
+                primaryGrabOffset = GetClosestGrabPoint(grabbedBy);
+                secondaryGrabOffset = null;
 
-            // Update held by properties
-            addGrabber(grabbedBy);
-            grabTransform.parent = grabbedBy.transform;
-            
-            rotateGrabber(false);
+                // Set the active Grab Point that we will be using
+                if (primaryGrabOffset) {
+                    ActiveGrabPoint = primaryGrabOffset.GetComponent<GrabPoint>();
+                }
+                else {
+                    ActiveGrabPoint = null;
+                }
+
+                // Update Hand Pose Id
+                if (primaryGrabOffset != null && ActiveGrabPoint != null) {
+                    CustomHandPose = primaryGrabOffset.GetComponent<GrabPoint>().HandPose;
+                    SelectedHandPose = primaryGrabOffset.GetComponent<GrabPoint>().SelectedHandPose;
+                    handPoseType = primaryGrabOffset.GetComponent<GrabPoint>().handPoseType;
+                }
+                else {
+                    CustomHandPose = initialHandPoseId;
+                    SelectedHandPose = initialHandPose;
+                    handPoseType = initialHandPoseType;
+                }
+
+                // Update held by properties
+                addGrabber(grabbedBy);
+                grabTransform.parent = grabbedBy.transform;
+                rotateGrabber(false);
+
+                // Use center of grabber if snapping
+                if (GrabMechanic == GrabType.Snap) {
+                    grabTransform.localEulerAngles = Vector3.zero;
+                    grabTransform.localPosition = -GrabPositionOffset;
+                }
+                // Precision hold can use position of what we're grabbing
+                else if (GrabMechanic == GrabType.Precise) {
+                    grabTransform.position = transform.position;
+                    grabTransform.rotation = transform.rotation;
+                }
+
+                // First remove any connected joints if necessary
+                var projectile = GetComponent<Projectile>();
+                if (projectile) {
+                    var fj = GetComponent<FixedJoint>();
+                    if (fj) {
+                        Destroy(fj);
+                    }
+                }
+
+                // Setup any relevant joints or required components
+                if (GrabPhysics == GrabPhysics.PhysicsJoint) {
+                    setupConfigJointGrab(grabbedBy, GrabMechanic);
+                }
+                else if (GrabPhysics == GrabPhysics.Velocity) {
+                    setupVelocityGrab(grabbedBy, GrabMechanic);
+                }
+                else if (GrabPhysics == GrabPhysics.FixedJoint) {
+                    setupFixedJointGrab(grabbedBy, GrabMechanic);
+                }
+                else if (GrabPhysics == GrabPhysics.Kinematic) {
+                    setupKinematicGrab(grabbedBy, GrabMechanic);
+                }
+
+                // Stop our object on initial grab
+                if(rigid) {
+                    rigid.velocity = Vector3.zero;
+                    rigid.angularVelocity = Vector3.zero;
+                }
+                
+
+                // Let events know we were grabbed
+                for (int x = 0; x < events.Count; x++) {
+                    events[x].OnGrab(grabbedBy);
+                }
+
+                checkParentHands(grabbedBy);
+
+                // Move Hand Model
+                if (GrabMechanic == GrabType.Precise && SnapHandModel && primaryGrabOffset != null && grabbedBy.HandsGraphics != null) {
+                    grabbedBy.HandsGraphics.transform.parent = primaryGrabOffset;
+                    grabbedBy.HandsGraphics.localPosition = grabbedBy.handsGraphicsGrabberOffset;
+                    grabbedBy.HandsGraphics.localEulerAngles = grabbedBy.handsGraphicsGrabberOffsetRotation;
+                }
+
+                SubscribeToMoveEvents();
+
+            }
+            else if (isSecondaryGrab) {
+                // Set where the item will move to on the grabber
+                secondaryGrabOffset = GetClosestGrabPoint(grabbedBy);
+
+                // Update held by properties
+                addGrabber(grabbedBy);
+
+                grabTransformSecondary.parent = grabbedBy.transform;
+
+                // Use center of grabber if snapping
+                if (GrabMechanic == GrabType.Snap) {
+                    grabTransformSecondary.localEulerAngles = Vector3.zero;
+                    grabTransformSecondary.localPosition = GrabPositionOffset;
+                }
+                // Precision hold can use position of what we're grabbing
+                else if (GrabMechanic == GrabType.Precise) {
+                    grabTransformSecondary.position = transform.position;
+                    grabTransformSecondary.rotation = transform.rotation;
+                }
+
+                checkParentHands(grabbedBy);
+
+                // Move Hand Model if snap hands and precise
+                if (GrabMechanic == GrabType.Precise && SnapHandModel && secondaryGrabOffset != null && grabbedBy.HandsGraphics != null) {
+                    grabbedBy.HandsGraphics.transform.parent = secondaryGrabOffset;
+                    grabbedBy.HandsGraphics.localPosition = grabbedBy.handsGraphicsGrabberOffset;
+                    grabbedBy.HandsGraphics.localEulerAngles = grabbedBy.handsGraphicsGrabberOffsetRotation;
+                }
+            }
 
             // Hide the hand graphics if necessary
             if (HideHandGraphics) {
                 grabbedBy.HideHandGraphics();
             }
-
-            // Use center of grabber if snapping
-            if (GrabMechanic == GrabType.Snap) {
-                grabTransform.localEulerAngles = Vector3.zero;
-                grabTransform.localPosition = GrabPositionOffset;
-            }
-            // Precision hold can use position of what we're grabbing
-            else if (GrabMechanic == GrabType.Precise) {
-                grabTransform.position = transform.position;
-                grabTransform.rotation = transform.rotation;
-            }
-
-            // Move Hand Model
-            if (GrabMechanic == GrabType.Precise && SnapHandModel && primaryGrabOffset != null && grabbedBy.HandsGraphics != null) {
-                grabbedBy.HandsGraphics.transform.parent = primaryGrabOffset;
-                grabbedBy.HandsGraphics.localPosition = grabbedBy.handsGraphicsGrabberOffset;
-                grabbedBy.HandsGraphics.localEulerAngles = grabbedBy.handsGraphicsGrabberOffsetRotation;
-            }
-
-            // First remove any connected joints if necessary
-            var projectile = GetComponent<Projectile>();
-            if (projectile) {
-                var fj = GetComponent<FixedJoint>();
-                if (fj) {
-                    Destroy(fj);
-                }
-            }
-
-            // Setup any relevant joints or required components
-            if (GrabPhysics == GrabPhysics.PhysicsJoint) {
-                setupConfigJointGrab(grabbedBy, GrabMechanic);
-            }
-            else if (GrabPhysics == GrabPhysics.Velocity) {
-                setupVelocityGrab(grabbedBy, GrabMechanic);
-            }
-            else if (GrabPhysics == GrabPhysics.FixedJoint) {
-                setupFixedJointGrab(grabbedBy, GrabMechanic);
-            }                        
-            else if (GrabPhysics == GrabPhysics.Kinematic) {
-                setupKinematicGrab(grabbedBy, GrabMechanic);
-            }
-
-            // Let events know we were grabbed
-            for (int x = 0; x < events.Count; x++) {
-                events[x].OnGrab(grabbedBy);
-            }
-
-            checkParentHands();           
 
             journeyLength = Vector3.Distance(grabPosition, grabbedBy.transform.position);
         }
@@ -1120,7 +1594,6 @@ namespace BNG {
             // Set up the physics joint for snapping
             else if (GrabMechanic == GrabType.Snap) {
                 // Need to Fix Rotation on Snap Physics when close by
-                //Quaternion originalRotation = transform.rotation;
                 transform.rotation = grabTransform.rotation;
 
                 // Setup joint
@@ -1153,25 +1626,36 @@ namespace BNG {
             }
 
             if (rigid != null) {
+                
+                // Update detection mode if necessary
+                if (rigid.collisionDetectionMode == CollisionDetectionMode.Continuous || rigid.collisionDetectionMode == CollisionDetectionMode.ContinuousDynamic) {
+                    rigid.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+                }
                 rigid.isKinematic = true;
             }
         }
 
         protected virtual void setupVelocityGrab(Grabber grabbedBy, GrabType grabType) {
             // Setup joint to be used when moving with velocity
-            if (GrabMechanic == GrabType.Precise) {
-                connectedJoint = grabbedBy.GetComponent<ConfigurableJoint>();
-                connectedJoint.connectedBody = rigid;
-                // Just let the autoconfigure handle the calculations for us
-                connectedJoint.autoConfigureConnectedAnchor = true;
+            bool addJointToVelocityGrabbable = false;
+            if(addJointToVelocityGrabbable) {
+                if (GrabMechanic == GrabType.Precise) {
+                    connectedJoint = grabbedBy.GetComponent<ConfigurableJoint>();
+                    connectedJoint.connectedBody = rigid;
+                    // Just let the autoconfigure handle the calculations for us
+                    connectedJoint.autoConfigureConnectedAnchor = true;
+                }
+                // Set up the connected joint for snapping
+                else if (GrabMechanic == GrabType.Snap) {
+                    transform.rotation = grabTransform.rotation;
+                    // Setup joint
+                    setupConfigJoint(grabbedBy);
+                    rigid.MoveRotation(grabTransform.rotation);
+                }
             }
-            // Set up the connected joint for snapping
-            else if (GrabMechanic == GrabType.Snap) {
-                transform.rotation = grabTransform.rotation;
-                // Setup joint
-                setupConfigJoint(grabbedBy);
-                rigid.MoveRotation(grabTransform.rotation);
-            }
+
+            // Disable Gravity to prevent fighting physics with the hand object
+            rigid.useGravity = false;            
         }
 
         public virtual void GrabRemoteItem(Grabber grabbedBy) {
@@ -1180,17 +1664,12 @@ namespace BNG {
             grabTransform.localEulerAngles = Vector3.zero;
             grabTransform.localPosition = -GrabPositionOffset;
 
-            grabTransform.localEulerAngles = GrabRotationOffset;
-
-            if (rigid) {
-                rigid.collisionDetectionMode = CollisionDetectionMode.Discrete;
-                rigid.isKinematic = true;
-            }
+            grabTransform.localEulerAngles = GrabRotationOffset;            
 
             remoteGrabbing = true;
         }
 
-        public void ResetGrabbing() {
+        public virtual void ResetGrabbing() {
             if (rigid) {
                 rigid.isKinematic = wasKinematic;
             }
@@ -1200,92 +1679,170 @@ namespace BNG {
             remoteGrabbing = false;
 
             collisions = new List<Collider>();
-        }
+        }        
 
         public virtual void DropItem(Grabber droppedBy, bool resetVelocity, bool resetParent) {
 
             // Nothing holding us
-            if(heldByGrabbers == null) {
+            if (heldByGrabbers == null) {
                 BeingHeld = false;
                 return;
             }
 
-            if (resetParent) {
-                ResetParent();
-            }
+            bool isPrimaryGrabber = droppedBy == GetPrimaryGrabber();
+            bool isSecondaryGrabber = !isPrimaryGrabber && heldByGrabbers.Count > 1;
 
-            //disconnect all joints and set the connected object to null
-            removeConfigJoint();
-            
-            // Remove Fixed Joint
-            if(GrabPhysics == GrabPhysics.FixedJoint) {
-                FixedJoint joint = droppedBy.gameObject.GetComponent<FixedJoint>();
-                if (joint) {
-                    GameObject.Destroy(joint);
+            if(isPrimaryGrabber) {
+
+                // Keep track of if we were being held with two hands or not before dropping the item
+                bool wasHeldWithTwoHands = BeingHeldWithTwoHands;
+                // Should we release this item
+                bool releaseItem = true;
+
+                if (resetParent) {
+                    ResetParent();
+                }
+
+                // disconnect all joints and set the connected object to null
+                removeConfigJoint();
+
+                // Remove Fixed Joint
+                if (GrabPhysics == GrabPhysics.FixedJoint && droppedBy != null) {
+                    FixedJoint joint = droppedBy.gameObject.GetComponent<FixedJoint>();
+                    if (joint) {
+                        GameObject.Destroy(joint);
+                    }
+                }
+
+                //  If something called drop on this item we want to make sure the parent knows about it
+                // Reset's Grabber position, grabbable state, etc.
+                if (droppedBy) {
+                    droppedBy.DidDrop();
+                }
+
+                // No longer need move events
+                UnsubscribeFromMoveEvents();
+
+                // No longer have a primary Grab Offset set
+                primaryGrabOffset = null;
+
+                // No longer looking at a 2h object
+                clearLookAtTransform();
+
+                removeGrabber(droppedBy);
+
+                didParentHands = false;
+
+                // This object is being held by another grabber. Should we drop the item, transfer it over, or do nothing.
+                if (wasHeldWithTwoHands) {
+
+                    // Force Release
+                    if(TwoHandedDropBehavior == TwoHandedDropMechanic.Drop) {
+                        // Drop Secondary Object
+                        if(SecondaryGrabbable != null && SecondaryGrabbable.BeingHeld) {
+                            SecondaryGrabbable.DropItem(false, false);
+                        }
+                        else {
+                            // Drop our own object
+                            DropItem(heldByGrabbers[0]);                            
+                        }
+                    }
+                    // Swap To other Hand Side
+                    else if (TwoHandedDropBehavior == TwoHandedDropMechanic.Transfer) {
+
+                        // We are going to transfer this item, so no need to release
+                        releaseItem = false;
+
+                        // Swap to new grabber
+                        var newGrabber = heldByGrabbers[0];
+                        Vector3 localHandsPos = Vector3.zero;
+                        Vector3 localHandsRot = Vector3.zero;
+
+                        if (newGrabber.HandsGraphics != null) {
+                            Transform prev = newGrabber.HandsGraphics.parent;
+                            newGrabber.HandsGraphics.parent = transform;
+                            localHandsPos = newGrabber.HandsGraphics.localPosition;
+                            localHandsRot = newGrabber.HandsGraphics.localEulerAngles;
+                            newGrabber.HandsGraphics.parent = prev;
+                        }
+
+                        DropItem(newGrabber);
+                        newGrabber.GrabGrabbable(this);
+
+                        // Call Transfer Events
+                        // OnTransferGrabber(Grabber from, Grabber to);
+
+                        // Fix Hands position
+                        if (newGrabber.HandsGraphics != null && ParentHandModel == true && GrabMechanic == GrabType.Precise) {
+                            Transform prev = newGrabber.HandsGraphics.parent;
+                            newGrabber.HandsGraphics.parent = transform;
+                            newGrabber.HandsGraphics.localPosition = localHandsPos;
+                            newGrabber.HandsGraphics.localEulerAngles = localHandsRot;
+                            newGrabber.HandsGraphics.parent = prev;
+                        }
+                    }
+                }
+                // Release the object
+                if(releaseItem) {
+
+                    LastDropTime = Time.time;
+
+                    // Release item and apply physics force to it
+                    if (rigid != null && GrabPhysics != GrabPhysics.None) {
+                        rigid.isKinematic = wasKinematic;
+                        rigid.useGravity = usedGravity;
+                        rigid.interpolation = initialInterpolationMode;
+                        rigid.collisionDetectionMode = initialCollisionMode;
+                    }
+
+                    // Override Kinematic status if specified
+                    if (ForceDisableKinematicOnDrop) {
+                        rigid.isKinematic = false;
+                        // Free of constraints if they were set
+                        if (rigid.constraints == RigidbodyConstraints.FreezeAll) {
+                            rigid.constraints = RigidbodyConstraints.None;
+                        }
+                    }
+
+                    // On release event
+                    if (events != null) {
+                        for (int x = 0; x < events.Count; x++) {
+                            events[x].OnRelease();
+                        }
+                    }
+
+                    // Reset hand pose
+                    CustomHandPose = initialHandPoseId;
+                    SelectedHandPose = initialHandPose;
+                    handPoseType = initialHandPoseType;
+
+                    // Apply velocity last
+                    if (rigid && resetVelocity && droppedBy && AddControllerVelocityOnDrop&& GrabPhysics != GrabPhysics.None) {
+                        // Make sure velocity is passed on
+                        Vector3 velocity = droppedBy.GetGrabberAveragedVelocity() + droppedBy.GetComponent<Rigidbody>().velocity;
+                        Vector3 angularVelocity = droppedBy.GetGrabberAveragedAngularVelocity() + droppedBy.GetComponent<Rigidbody>().angularVelocity;
+
+                        if (gameObject.activeSelf) {
+                            Release(velocity, angularVelocity);
+                        }
+                    }
                 }
             }
-
-            //  If something called drop on this item we want to make sure the parent knows about it
-            // Reset's Grabber position, grabbable state, etc.
-            if (droppedBy) {
-                droppedBy.DidDrop();
-            }
-
-            // Release item and apply physics force to it
-            if (rigid != null) {
-                rigid.isKinematic = wasKinematic;
-                rigid.useGravity = usedGravity;
-                rigid.interpolation = initialInterpolationMode;
-                rigid.collisionDetectionMode = initialCollisionMode;
-            }
-
-            // Override Kinematic status if specified
-            if(ForceDisableKinematicOnDrop) {
-                rigid.isKinematic = false;
-                // Free of constraints if they were set
-                if(rigid.constraints == RigidbodyConstraints.FreezeAll) {
-                    rigid.constraints = RigidbodyConstraints.None;
+            else if (isSecondaryGrabber) {
+                //  If something called drop on this item we want to make sure the parent knows about it
+                // Reset's Grabber position, grabbable state, etc.
+                if (droppedBy) {
+                    droppedBy.DidDrop();
                 }
+
+                removeGrabber(droppedBy);
+
+                secondaryGrabOffset = null;
+
+                // didParentHands = false;
             }
 
-            // On release event
-            if (events != null) {
-                for (int x = 0; x < events.Count; x++) {
-                    events[x].OnRelease();
-                }
-            }
-
-            // No longer have a primary Grab Offset set
-            primaryGrabOffset = null;
-
-            // No longer looking at a 2h object
-            clearLookAtTransform();
-
-            removeGrabber(droppedBy);
-
-            BeingHeld = false;
-            didParentHands = false;
-            LastDropTime = Time.time;
-            CustomHandPose = initialHandPoseId;
-
-            // Apply velocity last
-            if (rigid && resetVelocity && droppedBy && AddControllerVelocityOnDrop) {
-                // Make sure velocity is passed on
-                Vector3 velocity = droppedBy.GetGrabberAveragedVelocity() + droppedBy.GetComponent<Rigidbody>().velocity;
-                Vector3 angularVelocity = droppedBy.GetGrabberAveragedAngularVelocity() + droppedBy.GetComponent<Rigidbody>().angularVelocity;
-
-                if(gameObject.activeSelf) {
-                    StartCoroutine(Release(velocity, angularVelocity));
-                }
-            }
-        }
-
-        Vector3 angleLerp(Vector3 startAngle, Vector3 finishAngle, float t) {
-            float xLerp = Mathf.LerpAngle(startAngle.x, finishAngle.x, t);
-            float yLerp = Mathf.LerpAngle(startAngle.y, finishAngle.y, t);
-            float zLerp = Mathf.LerpAngle(startAngle.z, finishAngle.z, t);
-            Vector3 Lerped = new Vector3(xLerp, yLerp, zLerp);
-            return Lerped;
+            BeingHeld = heldByGrabbers != null && heldByGrabbers.Count > 0;
         }
 
         void clearLookAtTransform() {
@@ -1378,7 +1935,7 @@ namespace BNG {
         }
 
         public void ResetScale() {
-            transform.localScale = new Vector3(OriginalScale, OriginalScale, OriginalScale);
+            transform.localScale = OriginalScale;
         }
 
         public void ResetParent() {
@@ -1408,9 +1965,8 @@ namespace BNG {
         public virtual Grabber GetPrimaryGrabber() {
             if(heldByGrabbers != null) {
                 for (int x = 0; x < heldByGrabbers.Count; x++) {
-                    Grabber g = heldByGrabbers[x];
-                    if (g != null && g.HeldGrabbable == this) {
-                        return g;
+                    if (heldByGrabbers[x] != null && heldByGrabbers[x].HeldGrabbable == this) {
+                        return heldByGrabbers[x];
                     }
                 }
             }
@@ -1492,15 +2048,20 @@ namespace BNG {
             return grabPoint;
         }
 
-        IEnumerator Release (Vector3 velocity, Vector3 angularVelocity) {
+        /// <summary>
+        /// Throw the object by applying velocity
+        /// </summary>
+        /// <param name="velocity">How much velocity to apply to the grabbable. Multiplied by ThrowForceMultiplier</param>
+        /// <param name="angularVelocity">How much angular velocity to apply to the grabbable.</param>
+        public virtual void Release(Vector3 velocity, Vector3 angularVelocity) {
+            Vector3 releaseVelocity = velocity * ThrowForceMultiplier;
 
-            // It isn't strictly necessary to update the velocity twice, but I've found this gives slightly more responsive feeling throws
-            rigid.velocity = velocity * ThrowForceMultiplier;
-            rigid.angularVelocity = angularVelocity;
+            // Make sure this is a valid velocity
+            if (float.IsInfinity(releaseVelocity.x) || float.IsNaN(releaseVelocity.x)) {
+                return;
+            }
 
-            yield return new WaitForFixedUpdate();
-
-            rigid.velocity = velocity * ThrowForceMultiplier;
+            rigid.velocity = releaseVelocity;
             rigid.angularVelocity = angularVelocity;
         }
 
@@ -1532,17 +2093,17 @@ namespace BNG {
             return true;
         }
 
-        void parentHandGraphics(Grabber g) {
+        public virtual void parentHandGraphics(Grabber g) {
             if (g.HandsGraphics != null) {
                 // Set to specified Grab Transform
-                if(primaryGrabOffset != null) {
+                if (primaryGrabOffset != null) {
                     g.HandsGraphics.transform.parent = primaryGrabOffset;
+                    didParentHands = true;
                 }
                 else {
                     g.HandsGraphics.transform.parent = transform;
+                    didParentHands = true;
                 }
-                
-                didParentHands = true;
             }
         }
 
@@ -1550,10 +2111,7 @@ namespace BNG {
             connectedJoint = g.GetComponent<ConfigurableJoint>();
             connectedJoint.autoConfigureConnectedAnchor = false;
             connectedJoint.connectedBody = rigid;
-
-            float anchorOffsetVal = (1 / g.transform.localScale.x) * -1;
             connectedJoint.anchor = Vector3.zero;
-
             connectedJoint.connectedAnchor = GrabPositionOffset;
         }
 
@@ -1620,30 +2178,32 @@ namespace BNG {
             }
         }
 
-        Vector3 getRemotePosition(Grabber toGrabber) {
+        protected Vector3 getRemotePosition(Grabber toGrabber) {
 
-            if (toGrabber != null) {
-                Transform pointPosition = GetClosestGrabPoint(toGrabber);
+            return GetGrabberWithGrabPointOffset(toGrabber, GetClosestGrabPoint(toGrabber));
 
-                if(pointPosition) {
-                    Vector3 grabberPosition = toGrabber.transform.position;
+            //if (toGrabber != null) {
+            //    Transform pointPosition = GetClosestGrabPoint(toGrabber);
 
-                    // If there is a GrabPoint then we should offset the destination
-                    Transform grabPoint = GetClosestGrabPoint(toGrabber);
-                    if (grabPoint != null) {
-                        grabberPosition += transform.position - grabPoint.position;
-                    }
+            //    if(pointPosition) {
+            //        Vector3 grabberPosition = toGrabber.transform.position;
 
-                    return grabberPosition;
-                }
+            //        if (pointPosition != null) {
+            //            grabberPosition += transform.position - pointPosition.position;
+            //            //Vector3 offset = toGrabber.transform.InverseTransformPoint(pointPosition.position);
+            //            //grabberPosition += offset;
+            //        }
 
-                return grabTransform.position;
-            }
+            //        return grabberPosition;
+            //    }
 
-            return grabTransform.position;
+            //    return grabTransform.position;
+            //}
+
+            //return grabTransform.position;
         }
 
-        Quaternion getRemoteRotation(Grabber grabber) {
+        protected Quaternion getRemoteRotation(Grabber grabber) {
 
             if (grabber != null) {
                 Transform point = GetClosestGrabPoint(grabber);
@@ -1719,7 +2279,220 @@ namespace BNG {
             }
         }
 
-        
+        bool subscribedToEvents = false;
+        bool grabbableIsLocked = false;
+
+        /// <summary>
+        /// Subscribe to any movement-related events that might cause our Grabbable to suddenly move far away.
+        /// By subscribing to these events before they occur we can then respond better to these positional updates
+        /// </summary>
+        public virtual void SubscribeToMoveEvents() {
+
+            // Object can't be moved, so no need for subscription
+            if(!CanBeMoved || subscribedToEvents == true || GrabPhysics == GrabPhysics.None) {
+                return;
+            }
+
+            // Lock the slide in place when teleporting or snap turning
+            PlayerTeleport.OnBeforeTeleport += LockGrabbableWithRotation;
+            PlayerTeleport.OnAfterTeleport += UnlockGrabbable;
+
+            PlayerRotation.OnBeforeRotate += LockGrabbableWithRotation;
+            PlayerRotation.OnAfterRotate += UnlockGrabbable;
+
+            // Only needed for velocity and physics type movement
+            if(GrabPhysics == GrabPhysics.Velocity || GrabPhysics == GrabPhysics.PhysicsJoint) {
+                SmoothLocomotion.OnBeforeMove += LockGrabbable;
+                SmoothLocomotion.OnAfterMove += UnlockGrabbable;
+            }
+
+            // Kinematic can use parenting
+            if (GrabPhysics == GrabPhysics.Kinematic && ParentToHands == true) {
+                SmoothLocomotion.OnBeforeMove += LockGrabbableWithRotation;
+                SmoothLocomotion.OnAfterMove += UnlockGrabbable;
+            }
+            else if (GrabPhysics == GrabPhysics.Kinematic && ParentToHands == false) {
+                SmoothLocomotion.OnBeforeMove += LockGrabbable;
+                SmoothLocomotion.OnAfterMove += UnlockGrabbable;
+            }
+
+            subscribedToEvents = true;
+        }
+
+        public virtual void UnsubscribeFromMoveEvents() {
+            if(subscribedToEvents) {
+                PlayerTeleport.OnBeforeTeleport -= LockGrabbableWithRotation;
+                PlayerTeleport.OnAfterTeleport -= UnlockGrabbable;
+
+                PlayerRotation.OnBeforeRotate -= LockGrabbableWithRotation;
+                PlayerRotation.OnAfterRotate -= UnlockGrabbable;
+
+                // Specific lock types
+                if (GrabPhysics == GrabPhysics.Velocity || GrabPhysics == GrabPhysics.PhysicsJoint) {
+                    SmoothLocomotion.OnBeforeMove -= LockGrabbable;
+                    SmoothLocomotion.OnAfterMove -= UnlockGrabbable;
+                }
+
+                // Kinematic can use parenting
+                if (GrabPhysics == GrabPhysics.Kinematic && ParentToHands == true) {
+                    SmoothLocomotion.OnBeforeMove -= LockGrabbableWithRotation;
+                    SmoothLocomotion.OnAfterMove -= UnlockGrabbable;
+                }
+                else if (GrabPhysics == GrabPhysics.Kinematic && ParentToHands == false) {
+                    SmoothLocomotion.OnBeforeMove -= LockGrabbable;
+                    SmoothLocomotion.OnAfterMove -= UnlockGrabbable;
+                }
+
+                // Reset Lock Events
+                lockRequests = 0;
+
+                subscribedToEvents = false;
+            }
+        }
+
+        private Transform _priorParent;
+
+        private Vector3 _priorLocalOffsetPosition;
+        private Quaternion _priorLocalOffsetRotation;
+
+        private Grabber _priorPrimaryGrabber;
+        bool lockPos, lockRot;
+        int lockRequests = 0;
+
+        public virtual void LockGrabbable() {
+            // By default only lock position
+            LockGrabbable(true, false, false);
+        }
+
+        // Lock both position and rotation
+        public virtual void LockGrabbableWithRotation() {
+            LockGrabbable(true, true, true);
+        }
+
+        public virtual void RequestLockGrabbable() {
+
+            // Don't do anything if recent collision
+            if(RecentlyCollided) {
+                return;
+            }
+
+            lockRequests++;
+
+            if (lockRequests == 1) {
+                if (_priorPrimaryGrabber != null) {
+                    // Lock via parenting
+                    // Store position as well as parenting
+                    _priorParent = transform.parent;
+                    transform.parent = _priorPrimaryGrabber.transform;
+                }
+            }
+
+            if (lockRequests > 0) {
+                if (_priorPrimaryGrabber != null) {
+
+                    _priorParent = transform.parent;
+                    transform.parent = _priorPrimaryGrabber.transform;
+
+                    // Store latest position offset
+                    _priorLocalOffsetPosition = _priorPrimaryGrabber.transform.InverseTransformPoint(transform.position);
+                }
+            }
+        }
+
+        public virtual void RequestUnlockGrabbable() {
+
+            // Don't do anything if recent collision
+            if (RecentlyCollided) {
+                return;
+            }
+
+            ResetLockResets();
+        }
+
+        public virtual void ResetLockResets() {
+            if (lockRequests > 0) {
+
+                if (transform.parent != _priorParent) {
+                    transform.parent = _priorParent;
+                }
+
+                lockRequests = 0;
+            }
+        }
+
+        /// <summary>
+        /// Keep the Grabbable's position and /or rotation in place
+        /// </summary>
+        public virtual void LockGrabbable(bool lockPosition, bool lockRotation, bool overridePriorLock) {
+
+            if (BeingHeld && (!grabbableIsLocked || overridePriorLock)) {
+
+                if (_priorPrimaryGrabber != null) {
+
+                    lockPos = lockPosition;
+                    lockRot = lockRotation;
+
+                    // Lock via parenting
+                    if (lockPosition && lockRotation) {
+                        // Store position as well as parenting
+                        _priorLocalOffsetPosition = _priorPrimaryGrabber.transform.InverseTransformPoint(transform.position);
+
+                        _priorParent = transform.parent;
+                        transform.parent = _priorPrimaryGrabber.transform;
+                    }
+                   //  Individual locking
+                    else {
+                        if (lockPos) {
+                            _priorLocalOffsetPosition = _priorPrimaryGrabber.transform.InverseTransformPoint(transform.position);
+                        }
+
+                        if (lockRot) {
+                            _priorLocalOffsetRotation = Quaternion.FromToRotation(transform.forward, _priorPrimaryGrabber.transform.forward);
+                        }
+                    }
+
+                    grabbableIsLocked = true;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Allow the Grabbable to move
+        /// </summary>
+        public virtual void UnlockGrabbable() {
+            if (BeingHeld && grabbableIsLocked) {
+                // Use parenting if both position and rotation are to be locked
+                if(lockPos && lockRot) {
+                    Vector3 dest = _priorPrimaryGrabber.transform.TransformPoint(_priorLocalOffsetPosition);
+                    float dist = Vector3.Distance(transform.position, dest);
+                    // Only move if gone far enough
+                    if (dist > 0.001f) {
+                        transform.position = _priorPrimaryGrabber.transform.TransformPoint(_priorLocalOffsetPosition);
+                    }
+
+                    // Only reparent if necessary
+                    if(transform.parent != _priorParent) {
+                        transform.parent = _priorParent;
+                    }
+                }
+                else {
+                    if (lockPos) {
+                        Vector3 dest = _priorPrimaryGrabber.transform.TransformPoint(_priorLocalOffsetPosition);
+                        float dist = Vector3.Distance(transform.position, dest);
+                        // Only move if gone far enough
+                        if (dist > 0.0005f) {
+                            transform.position = dest;
+                        }
+                    }
+
+                    if (lockRot) {
+                        transform.rotation = _priorPrimaryGrabber.transform.rotation * _priorLocalOffsetRotation;
+                    }
+                }
+
+                grabbableIsLocked = false;
+            }
+        }
 
         /// <summary>
         /// You can comment this function out if you don't need precise contacts. Otherwise this is necessary to check for world collisions while being held
@@ -1768,9 +2541,9 @@ namespace BNG {
 
         void OnDrawGizmosSelected() {
             // Show Grip Points
-            Gizmos.color = Color.green;
+            Gizmos.color = new Color(0, 1, 0, 0.5f);
 
-            if(GrabPoints != null && GrabPoints.Count > 0) {
+            if (GrabPoints != null && GrabPoints.Count > 0) {
                 for (int i = 0; i < GrabPoints.Count; i++) {
                     Transform p = GrabPoints[i];
                     if (p != null) {
@@ -1783,4 +2556,63 @@ namespace BNG {
             }
         }     
     }
+
+    #region enums
+    public enum GrabType {
+        Snap,
+        Precise
+    }
+
+    public enum RemoteGrabMovement {
+        Linear,
+        Velocity,
+        Flick
+    }
+
+    public enum GrabPhysics {
+        None = 2,
+        PhysicsJoint = 0,
+        FixedJoint = 3,
+        Velocity = 4,
+        Kinematic = 1
+    }
+
+    public enum OtherGrabBehavior {
+        None,
+        SwapHands,
+        DualGrab
+    }
+
+    public enum TwoHandedPositionType {
+        Lerp,
+        None
+    }
+
+    public enum TwoHandedRotationType {
+        Lerp,
+        Slerp,
+        LookAtSecondary,
+        None
+    }
+
+    public enum TwoHandedDropMechanic {
+        Drop,
+        Transfer,
+        None
+    }
+
+    public enum TwoHandedLookDirection {
+        Horizontal,
+        Vertical        
+    }
+
+    public enum HandPoseType {
+        AnimatorID,
+        HandPose,
+        AutoPoseOnce,
+        AutoPoseContinuous,
+        None
+    }
+
+    #endregion
 }

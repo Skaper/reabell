@@ -1,6 +1,10 @@
+The most up to date installation instructions can be found at : https://wiki.beardedninjagames.com/Integrations/EmeraldAI
+
+If you want to deal limb damage or view additional information on EmeraldAI be sure to visit the wiki link above.
+
 In order to damage Emerald AI objects, you need to pass along the damage amount from the VR Framework to the Emerald AI system.
 
-To do this :
+Installation :
 
 1. Extract the EmeraldAI.unityPackage found in this folder
 

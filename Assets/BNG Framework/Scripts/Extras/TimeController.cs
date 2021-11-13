@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace BNG {
 
@@ -16,10 +17,13 @@ namespace BNG {
         public float SlowTimeScale = 0.5f;
 
         /// <summary>
-        /// If true, Y Button will always slow time. Useful for debugging. Otherwise call SlowTime / ResumeTime yourself
+        /// If true, Y Button will always slow time. Useful for debugging. Otherwise call SlowTime / ResumeTime yourself, or use a Unity InputActionReference
         /// </summary>
         [Tooltip("If true, Y Button will always slow time. Useful for debugging. Otherwise call SlowTime / ResumeTime yourself")]
         public bool YKeySlowsTime = true;
+
+        [Tooltip("Input Action used to initiate slow time")]
+        public InputActionReference SlowTimeAction;       
 
         [Tooltip("(Optional) Play this clip when starting to slow time")]
         public AudioClip SlowTimeClip;
@@ -59,12 +63,30 @@ namespace BNG {
 
         void Update() {
 
-            if ((YKeySlowsTime && InputBridge.Instance.YButton) || ForceTimeScale) {
+            if (SlowTimeInputDown() || ForceTimeScale) {
                 SlowTime();
             }
             else {
                 ResumeTime();
             }
+        }
+
+        /// <summary>
+        /// Returns true if SlowTimeAction is being held down
+        /// </summary>
+        /// <returns></returns>
+        public virtual bool SlowTimeInputDown() {
+            // Check default Y Key
+            if ((YKeySlowsTime && InputBridge.Instance.YButton)) {
+                return true;
+            }
+            
+            // Check for Unity Input Action
+            if (SlowTimeAction != null) {
+                return SlowTimeAction.action.ReadValue<float>() > 0f;
+            }
+
+            return false;
         }
 
         public void SlowTime() {
@@ -81,7 +103,9 @@ namespace BNG {
                 audioSource.Play();
 
                 // Haptics
-                InputBridge.Instance.VibrateController(0.1f, 0.2f, SpeedupTimeClip.length, ControllerHand.Left);
+                if(SpeedupTimeClip) {
+                    InputBridge.Instance.VibrateController(0.1f, 0.2f, SpeedupTimeClip.length, ControllerHand.Left);
+                }
 
                 Time.timeScale = SlowTimeScale;
                 Time.fixedDeltaTime = originalFixedDelta * Time.timeScale;

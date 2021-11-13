@@ -2,18 +2,19 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace BNG
-{
+namespace BNG {
 
     // This will rotate a transform along with a users headset. Useful for keeping an object aligned with the camera, independent of the player capsule collider.
-    public class RotateWithHMD : MonoBehaviour
-    {
+    public class RotateWithHMD : MonoBehaviour {
+
+        [Tooltip("The Transform to rotate along with")]
+        public Transform FollowTransform;
 
         /// <summary>
         /// The Character Capsule to  rotate along with
         /// </summary>
-        public Transform trekposition;
-        //public Camera camera;
+        [Tooltip("The Character Capsule to  rotate along with")]
+        public CharacterController Character;
 
         /// <summary>
         /// Offset to apply in local space to the hmdTransform
@@ -22,61 +23,76 @@ namespace BNG
 
         public float RotateSpeed = 5f;
 
-        public float MoveSpeed = 5f;
-        Rigidbody playerRigidbody;
-        //Transform trekposition;
-        private void Start()
-        {
-            playerRigidbody = GameManager.Player.GetComponent<PlayerReferences>().rigRigidbody;
-            //trekposition = GameManager.Player.transform;
-        }
-        void LateUpdate()
-        {
-            updateBodyPosition();
-        }
+        public float MovementSmoothing = 0;
 
-        void updateBodyPosition()
-        {
+        private Vector3 velocity = Vector3.zero;
 
+        [Tooltip("If true this transform will be parented to the characterController. Set this to true if you want the position and rotation to align with the character controller without delay.")]
+        public bool ParentToCharacter = false;
 
-            if (trekposition != null)
-            {
-                transform.position = trekposition.position;
-                //transform.position = trekposition.position + Offset;
-                transform.localPosition -= trekposition.TransformVector(Offset);
-                //Option 1
-                //transform.rotation = Quaternion.Lerp(transform.rotation, Quaternion.Euler(0.0f, Camera.main.transform.rotation.eulerAngles.y, 0.0f), Time.deltaTime * RotateSpeed);
+        Transform originalParent;
 
-                //Optrion 2
-                //Vector3 camAngle = new Vector3(playerRigidbody.rotation.eulerAngles.x, trekposition.rotation.eulerAngles.y + playerRigidbody.rotation.eulerAngles.y, playerRigidbody.rotation.eulerAngles.z);
-                //Quaternion deltaRotation = Quaternion.Euler(camAngle);
-                //transform.rotation = deltaRotation;
+        /// <summary>
+        /// This object will be used as a reference to follow
+        /// </summary>
+        Transform followTransform;
 
-                //Option 3
-                //Quaternion q = Quaternion.AngleAxis(rotationAmount, Vector3.up);
-                //Quaternion initialRotation = playerRigidbody.rotation;
-                //Quaternion.LookRotation();
-                //Quaternion.Euler(0.0f, trekposition.rotation.eulerAngles.y, 0.0f);
-                //initialRotation.y += trekposition.rotation.y;
-                //transform.rotation = initialRotation;
+        Transform camTransform;
 
+        void Start() {
+            originalParent = transform.parent;
+            followTransform = new GameObject().transform;
+            followTransform.name = "RotateReferenceObject";
+            followTransform.position = transform.position;
+            followTransform.rotation = transform.rotation;
 
-                //Quaternion rotationQuaternion = Quaternion.Euler(
-                //    new Vector3(
-                //        playerRigidbody.rotation.eulerAngles.x, 
-                //        trekposition.rotation.eulerAngles.y, 
-                //        playerRigidbody.rotation.eulerAngles.z
-                //        )
-                //    );
-                //
-                //transform.rotation = Quaternion.RotateTowards(transform.rotation, rotationQuaternion, 1.0f);
-
-
-                Vector3 camAngle = new Vector3(0f, trekposition.eulerAngles.y, 0f);
-                Quaternion deltaRotation = Quaternion.Euler(camAngle);
-                gameObject.transform.rotation = deltaRotation;
-
+            // Parent the object to our character and let the hierarchy take care of positioning
+            if (ParentToCharacter) {
+                transform.parent = Character.transform;
             }
+
+            // Set our reference transform to the Character object if it is available
+            if(FollowTransform) {
+                followTransform.parent = FollowTransform;
+            }
+            else if (Character) {
+                followTransform.parent = Character.transform;
+            }
+            else {
+                followTransform.parent = originalParent;
+            }
+        }
+
+        void LateUpdate() {
+            UpdatePosition();
+        }
+        void UpdatePosition() {
+
+            // Find Main Camera Object if it changed or not yet been fou nd
+            // Use the transform with the "MainCamera" tag, instead of Camera.main, as the Camera component could be disabled when using dual eye cameras.
+            if (camTransform == null && GameObject.FindGameObjectWithTag("MainCamera") != null) {
+                camTransform = GameObject.FindGameObjectWithTag("MainCamera").transform;
+                followTransform.position = camTransform.position;
+                followTransform.localEulerAngles = Vector3.zero;
+            }
+
+            // No main camera available
+            if (camTransform == null) {
+                return;
+            }
+
+            // Offset from Character's body if available
+            Vector3 worldOffset = Vector3.zero;
+            if(FollowTransform) {
+                worldOffset = FollowTransform.position - FollowTransform.TransformVector(Offset);
+            }
+            else if (Character) {
+                worldOffset = Character.transform.position - Character.transform.TransformVector(Offset);
+            } 
+
+            Vector3 moveToPosition = new Vector3(worldOffset.x, camTransform.position.y - Offset.y, worldOffset.z);
+            transform.position = Vector3.SmoothDamp(transform.position, moveToPosition, ref velocity, MovementSmoothing);
+            transform.rotation = Quaternion.Lerp(transform.rotation, followTransform.rotation, Time.deltaTime * RotateSpeed);
         }
     }
 }

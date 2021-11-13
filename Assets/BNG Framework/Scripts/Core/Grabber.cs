@@ -12,19 +12,19 @@ namespace BNG {
     [RequireComponent(typeof(GrabbablesInTrigger))]
     public class Grabber : MonoBehaviour {
 
-        [Header("General")]
+        [Header("Hand Side")]
         /// <summary>
         /// Which controller side. None if not attached to a controller.
         /// </summary>
         [Tooltip("Which controller side. None if not attached to a controller.")]
         public ControllerHand HandSide = ControllerHand.Left;
 
+        [Header("Grab Settings")]
         /// <summary>
         /// Which controller side. None if not attached to a controller.
         /// </summary>
         [Tooltip("The default hold type for all Grabbables. A Grabbable can manually override this default.")]
         public HoldType DefaultHoldType = HoldType.HoldDown;
-
 
         /// <summary>
         /// The default grab button for all Grabbables. A Grabbable can manually override this default.
@@ -32,18 +32,21 @@ namespace BNG {
         [Tooltip("The default grab button for all Grabbables. A Grabbable can manually override this default.")]
         public GrabButton DefaultGrabButton = GrabButton.Grip;
 
+        [Header("Hold / Release")]
         /// <summary>
         /// 0-1 determine how much to consider a grip.
         /// Example : 0.75 is holding the grip down 3/4 of the way
         /// </summary>
-        [Tooltip("0-1 determine how much to consider a grip. Example : 0.75 is holding the grip down 3/4 of the way")]
+        [Tooltip("0-1 determine how much to consider a grip. Example : 0.75 is holding the grip down 3/4 of the way.")]
+        [Range(0.0f, 1f)]
         public float GripAmount = 0.9f;
 
         /// <summary>
         /// How much grip considered to release an ob ect (0-1)
         /// </summary>
-        [Tooltip("How much grip considered to release an ob ect (0-1)")]
-        public float ReleaseGripAmount = 0.1f;
+        [Tooltip("How much grip considered to release an object (0-1). Example : 0.75 is holding the grip down 3/4 of the way")]
+        [Range(0.0f, 1f)]
+        public float ReleaseGripAmount = 0.5f;
 
         /// <summary>
         /// How many seconds to check for grab input while Grip is held down. After grip is held down for this long, grip will need to be repressed in order to pick up an object.
@@ -52,6 +55,7 @@ namespace BNG {
         public float GrabCheckSeconds = 0.5f;
         float currentGrabTime;
 
+        [Header("Equip on Start")]
         /// <summary>
         /// Assign a Grabbable here if you want to auto equip it on Start
         /// </summary>
@@ -69,19 +73,27 @@ namespace BNG {
         Vector3 handsGraphicsPosition;
         Quaternion handsGraphicsRotation;
 
-        [Header("Velocity Tracking")]
-        [Tooltip("If true, the controller's velocity will be retrieved from OVRInput.GetLocalControllerVelocity. If false, velocity will be calculated based on the transform's position. HandSide must not be set to None if usingGetLocalControllerVelocity")]
-        public bool UseOVRControllerVelocity = false;
-
-        [Tooltip("If true, the controller's angular velocity will be retrieved from OVRInput.GetLocalControllerAngularVelocity. If false, angular velocity will be calculated based on the transform's rotation. HandSide must not be set to None if using GetLocalControllerVelocity")]
-        public bool UseOVRControllerAngularVelocity = false;
-
         [Header("Shown for Debug :")]
         /// <summary>
         /// The Grabbable we are currently holding. Null if not holding anything.
         /// </summary>
         [Tooltip("The Grabbable we are currently holding. Null if not holding anything.")]
         public Grabbable HeldGrabbable;
+
+        /// <summary>
+        /// Same as holding down grip if set to true. Should not have same value as ForceRelease.
+        /// </summary>
+        [Tooltip("Same as holding down grip if set to true. Should not have same value as ForceRelease.")]
+        public bool ForceGrab = false;
+
+        /// <summary>
+        /// Force the release of grip
+        /// </summary>
+        [Tooltip("Force the release of grip if set to true. Should not have same value as ForceGrab.")]
+        public bool ForceRelease = false;
+
+        [Tooltip("Time.time when we last dropped a Grabbable")]
+        public float LastDropTime;
 
         Grabbable previousClosest;
         Grabbable previousClosestRemote;
@@ -94,9 +106,6 @@ namespace BNG {
             get { return HeldGrabbable != null; }
         }
 
-        // Time.time when we last dropped a Grabbable
-        public float LastDropTime;
-
         /// <summary>
         /// Are we currently pulling a remote grabbable towards us?
         /// </summary>
@@ -108,50 +117,37 @@ namespace BNG {
         /// Keep track of all grabbables in trigger
         /// </summary>
         GrabbablesInTrigger grabsInTrigger;
+        public GrabbablesInTrigger GrabsInTrigger {
+            get {
+                return grabsInTrigger;
+            }
+        }
 
-        // Object flying at our hand
+        /// <summary>
+        /// Returns the Grabbable object if we are currenly remote grabbing an object
+        /// </summary>
+        public Grabbable RemoteGrabbingGrabbable {
+            get {
+                return flyingGrabbable;
+            }
+        }
         Grabbable flyingGrabbable;
+
         // How long the object has been flying at our hand
         float flyingTime = 0;        
 
         // Offset Hand Models are from Grabber
         public Vector3 handsGraphicsGrabberOffset { get; private set; }
-        public Vector3 handsGraphicsGrabberOffsetRotation { get; private set; }        
-
-        /// <summary>
-        /// Same as holding down grip if set to true. Should not have same value as ForceRelease.
-        /// </summary>
-        [HideInInspector]
-        public bool ForceGrab = false;
-
-        /// <summary>
-        /// Force the release of grip
-        /// </summary>
-        [HideInInspector]
-        public bool ForceRelease = false;
+        public Vector3 handsGraphicsGrabberOffsetRotation { get; private set; }                
 
         [HideInInspector]
         public Vector3 PreviousPosition;
-
-        // Internal position stored to calculate velocity
-        Vector3 previousPosition;
-        // Current velocity that is updated in FixedUpdate
-        Vector3 velocity;
 
         /// <summary>
         /// Can be used to position hands independently from model
         /// </summary>
         [HideInInspector]
         public Transform DummyTransform; 
-
-        // Number of FixedUpdates to average velocities
-        float averageVelocityCount = 3;
-        List<Vector3> previousVelocities;
-        List<Vector3> previousAngularVelocities;
-
-        // Store our rotations used to calculate angular velocities
-        Quaternion previousRotation;
-        Vector3 angularVelocity;
 
         Rigidbody rb;
         InputBridge input;
@@ -161,12 +157,19 @@ namespace BNG {
         [HideInInspector]
         public bool FreshGrip = true;
 
-        // Used for tracking playspace rotation which may be needed to determine velocity of thrown objects
-        GameObject playSpace;
-
         [Header("Grabber Events")]
+        [Tooltip("Called immediately before a Grabbable object is officially grabbed")]
         public GrabbableEvent onGrabEvent;
+
+        [Tooltip("Called immediately after a Grabbable object is grabbed. Use this if you need the Grabbable object to be setup before accessing it")]
+        public GrabbableEvent onAfterGrabEvent;
+
+        [Tooltip("Called immediately before droppping an item")]
         public GrabbableEvent onReleaseEvent;
+
+        // For tracking velocity
+        [HideInInspector]
+        public VelocityTracker velocityTracker;
 
         void Start() {
             rb = GetComponent<Rigidbody>();
@@ -194,14 +197,10 @@ namespace BNG {
                 handsGraphicsParent = HandsGraphics.transform.parent;
                 handsGraphicsPosition = HandsGraphics.transform.localPosition;
                 handsGraphicsRotation = HandsGraphics.transform.localRotation;
-                handsGraphicsGrabberOffset = HandsGraphics.position - transform.position;
+
+                handsGraphicsGrabberOffset = transform.InverseTransformPoint(HandsGraphics.position);
                 handsGraphicsGrabberOffsetRotation = transform.localEulerAngles;
             }
-
-            playSpace = GameObject.Find("TrackingSpace");
-            
-            previousVelocities = new List<Vector3>();
-            previousAngularVelocities = new List<Vector3>();
 
             // Make Collision Dynamic so we don't miss any collisions
             if (rb && rb.isKinematic) {
@@ -211,6 +210,17 @@ namespace BNG {
             // Should we auto equip an item
             if(EquipGrabbableOnStart != null) {
                 GrabGrabbable(EquipGrabbableOnStart);
+            }
+
+            // Velocity Tracking
+            if(velocityTracker == null) {
+                velocityTracker = GetComponent<VelocityTracker>();
+            }
+
+            // Add Velocity Tracker if one was not provided
+            if (velocityTracker == null) {
+                velocityTracker = gameObject.AddComponent<VelocityTracker>();
+                velocityTracker.controllerHand = HandSide;
             }
         }
         
@@ -233,11 +243,8 @@ namespace BNG {
             // Fire off updates
             checkGrabbableEvents();
 
-            // Update velocity tracking
-            updateVelocities();
-
             // Check for input to grab or release item
-            if ((inputCheckGrab() && !HoldingItem) || ForceGrab) {
+            if ((HoldingItem == false && InputCheckGrab()) || ForceGrab) {
                 TryGrab();               
             }
             else if(((HoldingItem || RemoteGrabbingItem) && inputCheckRelease()) || ForceRelease) {                
@@ -342,73 +349,40 @@ namespace BNG {
             previousClosestRemote = grabsInTrigger.ClosestRemoteGrabbable;
         }
 
-        // Used in out variables to calculate angleaxis
-        float angle;
-        Vector3 axis;
-
-        void updateVelocities() {
-
-            // Update velocity based on current and previous position
-            velocity = (transform.position - previousPosition) / Time.deltaTime;
-
-            // Add Linear Velocity
-            previousVelocities.Add(GetGrabberVelocity());
-
-            // Shrink list if necessary
-            if (previousVelocities.Count >= averageVelocityCount) {
-                previousVelocities.RemoveAt(0);
-            }
-
-            // Store previous position used in next update
-            previousPosition = transform.position;
-
-            // Update our current angular velocity
-            Quaternion deltaRotation = transform.rotation * Quaternion.Inverse(previousRotation);            
-            deltaRotation.ToAngleAxis(out angle, out axis);
-            angle *= Mathf.Deg2Rad;
-            angularVelocity = axis * angle * (1.0f / Time.deltaTime);
-
-            // Add Angular Velocity
-            previousAngularVelocities.Add(GetGrabberAngularVelocity());
-
-            // Shrink list if necessary
-            if (previousAngularVelocities.Count >= averageVelocityCount) {
-                previousAngularVelocities.RemoveAt(0);
-            }
-
-            // Store previous rotation used in next update
-            previousRotation = transform.rotation;
-        }
-
         // See if we are inputting controls to grab an item
-        protected virtual bool inputCheckGrab() {
-
-            // Can only hold one grabbable at a time
-            if(HeldGrabbable != null) {
-                return false;
-            }
+        public virtual bool InputCheckGrab() {
 
             // Nothing nearby to grab
             Grabbable closest = getClosestOrRemote();
-            if (closest == null) {
+
+            return GetInputDownForGrabbable(closest);           
+        }
+
+        public virtual bool GetInputDownForGrabbable(Grabbable grabObject) {
+
+            if(grabObject == null) {
                 return false;
             }
 
             // Check Hold Controls
-            HoldType closestHoldType = getHoldType(closest);
-            GrabButton closestGrabButton = GetGrabButton(closest);
+            HoldType closestHoldType = getHoldType(grabObject);
+            GrabButton closestGrabButton = GetGrabButton(grabObject);
 
             // Hold to grab controls
             if (closestHoldType == HoldType.HoldDown) {
                 bool grabInput = getGrabInput(closestGrabButton) >= GripAmount;
 
-                if(closestGrabButton == GrabButton.Grip && !FreshGrip) {
+                if (closestGrabButton == GrabButton.Grip && !FreshGrip) {
                     return false;
                 }
 
+                //if(HandSide == ControllerHand.Left && InputBridge.Instance.LeftTrigger > 0.9f) {
+                //    Debug.Log("Trigger Down");
+                //}
+
                 return grabInput;
             }
-            // Toggle controls
+            // Check Toggle Controls
             else if (closestHoldType == HoldType.Toggle) {
                 return getToggleInput(closestGrabButton);
             }
@@ -587,13 +561,14 @@ namespace BNG {
             // Just grabbed something, no longer fresh.
             FreshGrip = false;
 
-            // Fire off Grabber event
-            if(onGrabEvent != null) {
-                onGrabEvent.Invoke(item);
-            }
+            // Fire off Grabber 'before' grab event
+            onGrabEvent?.Invoke(item);
 
             // Let item know it's been grabbed
             item.GrabItem(this);
+
+            // Fire off Grabber 'after' grab event
+            onAfterGrabEvent?.Invoke(item);
         }
 
         // Dropped whatever was in hand
@@ -651,91 +626,12 @@ namespace BNG {
             }
         }       
 
-        public virtual Vector3 GetGrabberVelocity() {
-#if OCULUS_INTEGRATION
-            if(UseOVRControllerVelocity) {
-                // Left controller velocity
-                if (HandSide == ControllerHand.Left) {
-                    return OVRInput.GetLocalControllerVelocity(OVRInput.Controller.LTouch);
-                }
-                // Right controller velocity
-                else if (HandSide == ControllerHand.Right) {
-                    return OVRInput.GetLocalControllerVelocity(OVRInput.Controller.RTouch);
-                }
-            }
-#endif
-
-            // velocity is calculated in FixedUpdate based on previous and current position
-            return velocity;
-        }        
-
         public virtual Vector3 GetGrabberAveragedVelocity() {
-            if (UseOVRControllerVelocity && playSpace) {
-                return playSpace.transform.rotation * GetAveragedVector(previousVelocities);
-            }
-            else {
-                return GetAveragedVector(previousVelocities);
-            }
+            return velocityTracker.GetAveragedVelocity();
         }
 
         public virtual Vector3 GetGrabberAveragedAngularVelocity() {
-
-            if (UseOVRControllerAngularVelocity && playSpace) {
-
-                Vector3 angularVel = playSpace.transform.rotation * GetAveragedVector(previousAngularVelocities);
-
-                //  Angular Velocity is backwards for Oculus Quest with Oculus SDK and OVRVelocity. Not on SteamVR.
-                // https://developer.oculus.com/bugs/bug/1781303415399021/
-                if (InputBridge.Instance.InputSource != XRInputSource.SteamVR && Application.platform == RuntimePlatform.Android) {
-                    angularVel = -angularVel;
-                }
-
-                return angularVel;
-            }
-            else {
-                return GetAveragedVector(previousAngularVelocities);
-            }
-        }
-
-        Vector3 GetAveragedVector(List<Vector3> vectors) {
-
-            if (vectors != null) {
-
-                int count = vectors.Count;
-                float x = 0;
-                float y = 0; 
-                float z = 0;
-
-                for (int i = 0; i < count; i++) {
-                    Vector3 v = vectors[i];
-                    x += v.x;
-                    y += v.y;
-                    z += v.z;
-                }
-
-                return new Vector3(x / count, y / count, z / count);
-            }
-
-            return Vector3.zero;
-        }
-        
-        public virtual Vector3 GetGrabberAngularVelocity() {
-
-            if(UseOVRControllerAngularVelocity) {
-#if OCULUS_INTEGRATION
-                // Left controller angular velocity
-                if (HandSide == ControllerHand.Left) {
-                    return OVRInput.GetLocalControllerAngularVelocity(OVRInput.Controller.LTouch);
-                }
-                // Right controller angular velocity
-                else if (HandSide == ControllerHand.Right) {
-                    return OVRInput.GetLocalControllerAngularVelocity(OVRInput.Controller.RTouch);
-                }
-#endif
-            }
-
-            // Angular velocity is calculated in Update
-            return angularVelocity;
+            return velocityTracker.GetAveragedAngularVelocity();
         }
     }
 }

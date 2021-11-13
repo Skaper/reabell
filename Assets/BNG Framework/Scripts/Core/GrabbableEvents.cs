@@ -16,7 +16,7 @@ namespace BNG {
 
         protected InputBridge input;
 
-        private void Awake() {
+        protected virtual void Awake() {
             grab = GetComponent<Grabbable>();
             input = InputBridge.Instance;
         }
@@ -223,5 +223,22 @@ namespace BNG {
     /// </summary>
     [System.Serializable]
     public class RaycastHitEvent : UnityEvent<RaycastHit> { }
-    
+
+    /// <summary>
+    /// A UnityEvent with a Vector2 as a parameter
+    /// </summary>
+    [System.Serializable]
+    public class Vector2Event : UnityEvent<Vector2> { }
+
+    /// <summary>
+    /// A UnityEvent with a Vector3 as a parameter
+    /// </summary>
+    [System.Serializable]
+    public class Vector3Event : UnityEvent<Vector3> { }
+
+    /// <summary>
+    /// A UnityEvent with a Vector3 as a parameter
+    /// </summary>
+    [System.Serializable]
+    public class PointerEventDataEvent : UnityEvent<UnityEngine.EventSystems.PointerEventData> { }
 }

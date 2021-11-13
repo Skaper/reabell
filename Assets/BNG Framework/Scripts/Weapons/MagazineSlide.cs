@@ -45,18 +45,23 @@ namespace BNG {
 
         float lastEjectTime;
 
-        void Start() {
+        void Awake() {
             grabClipArea = GetComponentInChildren<GrabberArea>();
 
             if (transform.parent != null) {
                 parentWeapon = transform.parent.GetComponent<RaycastWeapon>();
+            }
+
+            // Check to see if we started with a loaded magazine
+            if(HeldMagazine != null) {
+                AttachGrabbableMagazine(HeldMagazine, HeldMagazine.GetComponent<Collider>());
             }
         }        
 
         void LateUpdate() {
 
             // Are we trying to grab the clip from the weapon
-            checkGrabClipInput();
+            CheckGrabClipInput();
 
             // There is a magazine inside the slide. Position it properly
             if(HeldMagazine != null) {
@@ -115,7 +120,7 @@ namespace BNG {
             HeldMagazine.transform.localPosition = localPosition;
         }
 
-        void checkGrabClipInput() {
+        public void CheckGrabClipInput() {
 
             // No need to check for grabbing a clip out if none exists
             if(HeldMagazine == null || grabClipArea == null) {
@@ -146,7 +151,9 @@ namespace BNG {
             HeldMagazine.DropItem(grabber, false, false);
 
             // Play Sound
-            VRUtils.Instance.PlaySpatialClipAt(ClipAttachSound, transform.position, 1f);
+            if(ClipAttachSound && Time.timeSinceLevelLoad > 0.1f) {
+                VRUtils.Instance.PlaySpatialClipAt(ClipAttachSound, transform.position, 1f);
+            }
 
             // Move to desired location before locking in place
             moveMagazine(Vector3.zero);
@@ -281,18 +288,22 @@ namespace BNG {
             }
         }
 
+        public virtual void AttachGrabbableMagazine(Grabbable mag, Collider magCollider) {
+            HeldMagazine = mag;
+            HeldMagazine.transform.parent = transform;
+
+            HeldCollider = magCollider;
+
+            // Disable the collider while we're sliding it in to the weapon
+            if (HeldCollider != null) {
+                HeldCollider.enabled = false;
+            }
+        }
+
         void OnTriggerEnter(Collider other) {
             Grabbable grab = other.GetComponent<Grabbable>();
             if (HeldMagazine == null && grab != null && grab.transform.name.Contains(AcceptableMagazineName)) {
-                HeldMagazine = grab;
-                HeldMagazine.transform.parent = transform;
-
-                HeldCollider = other;
-                
-                // Disable the collider while we're sliding it in to the weapon
-                if(HeldCollider != null) {
-                    HeldCollider.enabled = false;
-                }
+                AttachGrabbableMagazine(grab, other);
             }
         }
     }

@@ -15,6 +15,11 @@ namespace BNG {
         public bool RequireHandleTurnToOpen = false;
 
         /// <summary>
+        /// If RequireHandleTurnToOpen and the handle has not fully opened then the door will be kinematic / immovable
+        /// </summary>
+        bool handleLocked = false;
+
+        /// <summary>
         /// This transform is used to determine how many degrees have been turned. Required if RequireHandleTurnToOpen is true
         /// </summary>
         public Transform HandleFollower;
@@ -41,32 +46,38 @@ namespace BNG {
 
         public float AngularVelocitySnapDoor = 0.2f;
 
+        public float angle;
+        public float AngularVelocity = 0.2f;
+
+        [Tooltip("If true the door will not respond to user input")]
+        public bool DoorIsLocked = false;
+
+        public float lockPos;
+
+        // public string DebugText;
+
+        // Cache for GC
+        Vector3 currentRotation;
+        float moveLockAmount, rotateAngles, ratio;
+
         void Start() {
             hinge = GetComponent<HingeJoint>();
             rigid = GetComponent<Rigidbody>();
 
-            if(DoorLockTransform) {
+            if (DoorLockTransform) {
                 initialLockPosition = DoorLockTransform.transform.localPosition.x;
             }
         }
-
-        public float angle;
-        public float AngularVelocity = 0.2f;
-        bool doorLocked = false;
-
-        public float lockPos;
-
-        public string DebugText;
 
         void Update() {
 
             // Read Angular Velocity used for snapping door shut
             AngularVelocity = rigid.angularVelocity.magnitude;
 
-            DebugText = rigid.angularVelocity.x + ", " + rigid.angularVelocity.y + ", " + rigid.angularVelocity.z;
+            // DebugText = rigid.angularVelocity.x + ", " + rigid.angularVelocity.y + ", " + rigid.angularVelocity.z;
 
             // Get the modified angle of of the lever. Use this to get percentage based on Min and Max angles.
-            Vector3 currentRotation = transform.localEulerAngles;
+            currentRotation = transform.localEulerAngles;
             angle = Mathf.Floor(currentRotation.y);
 
             if(angle >= 180) {
@@ -78,7 +89,6 @@ namespace BNG {
 
             // Play Open Sound
             if (angle > 10) {
-
                 if(!playedOpenSound) {
                     VRUtils.Instance.PlaySpatialClipAt(DoorOpenSound, transform.position, 1f, 1f);
                     playedOpenSound = true;
@@ -112,9 +122,9 @@ namespace BNG {
 
             if(DoorLockTransform) {
                 // 45 Degrees = Fully Open
-                float moveLockAmount = 0.025f;
-                float rotateAngles = 55;
-                float ratio = rotateAngles / (rotateAngles - Mathf.Clamp(DegreesTurned, 0, rotateAngles));
+                moveLockAmount = 0.025f;
+                rotateAngles = 55;
+                ratio = rotateAngles / (rotateAngles - Mathf.Clamp(DegreesTurned, 0, rotateAngles));
                 lockPos =  initialLockPosition - (ratio * moveLockAmount) + moveLockAmount;
                 lockPos = Mathf.Clamp(lockPos, initialLockPosition - moveLockAmount, initialLockPosition);
 
@@ -123,11 +133,26 @@ namespace BNG {
 
             // Set Lock Status
             if(RequireHandleTurnToOpen) {
-                doorLocked = DegreesTurned < DegreesTurnToOpen;
+                handleLocked = DegreesTurned < DegreesTurnToOpen;
             }
 
             // Lock Door in place if closed and requires handle to be turned
-            rigid.isKinematic = angle < 0.02f && doorLocked;
+            if(angle < 0.02f && (handleLocked || DoorIsLocked)) {
+                // Check on detection mode
+                if (rigid.collisionDetectionMode == CollisionDetectionMode.Continuous || rigid.collisionDetectionMode == CollisionDetectionMode.ContinuousDynamic) {
+                    rigid.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+                }
+
+                rigid.isKinematic = true;
+            }
+            else {
+                // Check on detection mode
+                if (rigid.collisionDetectionMode == CollisionDetectionMode.ContinuousSpeculative) {
+                    rigid.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+                }
+
+                rigid.isKinematic = false;
+            }
         }
     }
 }

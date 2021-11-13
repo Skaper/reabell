@@ -19,6 +19,8 @@ namespace BNG {
 
         void Update() {
             deltaTime += (Time.unscaledDeltaTime - deltaTime) * 0.1f;
+
+            text.text = Math.Ceiling(1.0f / deltaTime) + " FPS";
         }
 
         void OnGUI() {

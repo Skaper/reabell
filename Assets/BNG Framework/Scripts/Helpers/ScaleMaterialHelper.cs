@@ -17,16 +17,18 @@ namespace BNG {
             updateTexture();
         }
 
-        // Update is called once per frame
-        void Update() {
-            if (Application.isEditor) {
-                updateTexture();
+        void updateTexture() {
+            if(ren != null && ren.material != null) {
+                ren.material.mainTextureScale = Tiling;
+                ren.material.mainTextureOffset = Offset;
             }
         }
 
-        void updateTexture() {
-            ren.material.mainTextureScale = Tiling;
-            ren.material.mainTextureOffset = Offset;
+        // Update live in editor / selected
+        void OnDrawGizmosSelected() {
+            if (Application.isEditor) {
+                updateTexture();
+            }
         }
     }
 }

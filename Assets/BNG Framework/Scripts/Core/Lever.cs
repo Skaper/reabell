@@ -4,14 +4,23 @@ using UnityEngine;
 using UnityEngine.Events;
 
 namespace BNG {
-    
+
     /// <summary>
     /// Helper class to interact with physical levers
     /// </summary>
     public class Lever : MonoBehaviour {
 
-        public Rigidbody ParentRigidbody;
+        [Header("Rotation Limits")]
+        [Tooltip("Minimum X value in Local Euler Angles")]
+        public float MinimumXRotation = -45f;
 
+        [Tooltip("Maximum X value in Local Euler Angles")]
+        public float MaximumXRotation = 45f;
+
+        [Header("Initial Rotation")]
+        public float InitialXRotation = 0f;
+
+        [Header("Audio")]
         public AudioClip SwitchOnSound;
         public AudioClip SwitchOffSound;
 
@@ -19,27 +28,25 @@ namespace BNG {
         /// Tolerance before considering a switch flipped On or Off
         /// Ex : 1.25 Tolerance means switch can be 98.25% up and considered switched on
         /// </summary>
-        [Tooltip("Tolerance before considering a switch flipped On or Off. Ex : 1.25 Tolerance means switch can be 98.25% up and considered switched on.")]
+        [Header("Tolerance")]
+        [Tooltip("Tolerance before considering a switch flipped On or Off. Ex : 1.25 Tolerance means switch can be 98.25% up and considered switched on, or 1.25% down to be considered switched off.")]
         public float SwitchTolerance = 1.25f;
 
-        /// <summary>
-        /// Current position of the lever as expressed as a percentage 1-100
-        /// </summary>
-        [Tooltip("Current position of the lever as expressed as a percentage 1-100")]
-        public float LeverPercentage;
-
+        [Header("Smooth Look")]
         [Tooltip("If true the lever will lerp towards the Grabber. If false the lever will instantly point to the grabber")]
         public bool UseSmoothLook = true;
 
         [Tooltip("The speed at which to Lerp towards the Grabber if UseSmoothLook is enabled")]
         public float SmoothLookSpeed = 15f;
 
+        [Header("Moving Platform Support")]
         /// <summary>
         /// If false, the lever's rigidbody will be kinematic when not being held. Disable this if you don't want your lever to interact with physics or if you need moving platform support.
         /// </summary>
         [Tooltip("If false, the lever's rigidbody will be kinematic when not being held. Disable this if you don't want your lever to interact with physics or if you need moving platform support.")]
         public bool AllowPhysicsForces = true;
 
+        [Header("Return to Center (Must be Kinematic)")]
         /// <summary>
         /// If ReturnToCenter true and KinematicWhileInactive true then the lever will smooth look back to center when not being held
         /// </summary>
@@ -52,12 +59,28 @@ namespace BNG {
         [Tooltip("How fast to return to center if not being held")]
         public float ReturnLookSpeed = 5f;
 
+        [Header("Snap Settings")]
         /// <summary>
         /// If true the lever will look directly at the Grabber and not factor in an initial offset
         /// </summary>
         [Tooltip("If true the lever will look directly at the Grabber and not factor in an initial offset")]
         public bool SnapToGrabber = false;
 
+        [Header("Misc")]
+        [Tooltip("If true, the Lever will be dropped once switched on or off")]
+        public bool DropLeverOnActivation = false;
+
+        [Header("Shown for Debug")]
+        /// <summary>
+        /// Current position of the lever as expressed as a percentage 1-100
+        /// </summary>
+        [Tooltip("Current position of the lever as expressed as a percentage 1-100")]
+        public float LeverPercentage;
+
+        [Tooltip("If true will show an angle helper in editor mode (Gizmos must be enabled)")]
+        public bool ShowEditorGizmos = true;
+
+        [Header("Events")]
         /// <summary>
         /// Called when lever was up, but is now in the down position
         /// </summary>
@@ -79,28 +102,27 @@ namespace BNG {
         Grabbable grab;
         Rigidbody rb;
         AudioSource audioSource;
-        bool switchedOn = true;
-        private SwitchStates switchState;
-        private enum SwitchStates
-        {
-            ON = 1,
-            MINDDLE = 2,
-            OFF = 3
-        }
+        bool switchedOn;
 
         ConfigurableJoint configJoint;
-        HingeJoint hingeJoint;
+        HingeJoint hingedJoint;
 
-        void Awake() {
+        private Vector3 _lastLocalAngle;
+
+        void Start() {
             grab = GetComponent<Grabbable>();
             rb = GetComponent<Rigidbody>();
-            hingeJoint = GetComponent<HingeJoint>();
+            hingedJoint = GetComponent<HingeJoint>();
             configJoint = GetComponent<ConfigurableJoint>();
 
             audioSource = GetComponent<AudioSource>();
             if (audioSource == null && (SwitchOnSound != null || SwitchOffSound != null)) {
                 audioSource = gameObject.AddComponent<AudioSource>();
             }
+        }
+
+        void Awake() {
+            transform.localEulerAngles = new Vector3(InitialXRotation, 0, 0);
         }
 
         void Update() {
@@ -111,16 +133,13 @@ namespace BNG {
             }
 
             // Make sure grab offset is reset when not being held
-            if(!grab.BeingHeld) {
+            if (!grab.BeingHeld) {
                 initialOffset = Quaternion.identity;
             }
 
-            // Lock our local position and axis in Update to avoid jitter
-            transform.localPosition = Vector3.zero;
-
             // Get the modified angle of of the lever. Use this to get percentage based on Min and Max angles.
             Vector3 currentRotation = transform.localEulerAngles;
-            float angle = Mathf.Floor(currentRotation.x);
+            float angle = Mathf.Round(currentRotation.x);
             angle = (angle > 180) ? angle - 360 : angle;
 
             // Set percentage of level position
@@ -130,22 +149,19 @@ namespace BNG {
             OnLeverChange(LeverPercentage);
 
             // Up / Down Events
-            if (LeverPercentage >= 80 && (switchState == SwitchStates.OFF || switchState == SwitchStates.MINDDLE)) { // !switchedOn
+            if ((LeverPercentage + SwitchTolerance) > 99 && !switchedOn) {
                 OnLeverUp();
             }
-            else if (LeverPercentage <= 1 && (switchState == SwitchStates.ON || switchState == SwitchStates.MINDDLE))
-            { // switchedOn
+            else if ((LeverPercentage - SwitchTolerance) < 1 && switchedOn) {
                 OnLeverDown();
             }
-            else if(LeverPercentage > 10 && LeverPercentage < 80)
-            {
-                switchState = SwitchStates.MINDDLE;
-            }
-        }
+
+            _lastLocalAngle = transform.localEulerAngles;
+        }       
 
         public virtual float GetAnglePercentage(float currentAngle) {
-            if(hingeJoint) {
-                return (currentAngle - hingeJoint.limits.min) / (hingeJoint.limits.max - hingeJoint.limits.min) * 100;
+            if (hingedJoint) {
+                return (currentAngle - hingedJoint.limits.min) / (hingedJoint.limits.max - hingedJoint.limits.min) * 100;
             }
 
             if (configJoint) {
@@ -155,7 +171,8 @@ namespace BNG {
             return 0;
         }
 
-        void FixedUpdate() {            
+        void FixedUpdate() {
+
             // Align lever with Grabber
             doLeverLook();
         }
@@ -186,7 +203,7 @@ namespace BNG {
                     initialOffset = originalRot * Quaternion.Inverse(transform.rotation);
                 }
 
-                if(!SnapToGrabber) {
+                if (!SnapToGrabber) {
                     transform.rotation = transform.rotation * initialOffset;
                 }
 
@@ -196,16 +213,24 @@ namespace BNG {
                     transform.rotation = Quaternion.Lerp(transform.rotation, newRot, Time.deltaTime * SmoothLookSpeed);
                 }
             }
-            else if(grab != null && !grab.BeingHeld) {
-                if(ReturnToCenter && AllowPhysicsForces == false) {
+            else if (grab != null && !grab.BeingHeld) {
+                if (ReturnToCenter && AllowPhysicsForces == false) {
                     transform.localRotation = Quaternion.Lerp(transform.localRotation, Quaternion.identity, Time.deltaTime * ReturnLookSpeed);
                 }
             }
         }
 
+        /// <summary>
+        /// Sets the X local euler angle of the lever. Angle is capped by MinimumXRotation / MaximumXRotation
+        /// </summary>
+        /// <param name="angle"></param>
+        public virtual void SetLeverAngle(float angle) {
+            transform.localEulerAngles = new Vector3(Mathf.Clamp(angle, MinimumXRotation, MaximumXRotation), 0, 0);
+        }
+
         // Callback for lever percentage change
         public virtual void OnLeverChange(float percentage) {
-            if(onLeverChange != null) {
+            if (onLeverChange != null) {
                 onLeverChange.Invoke(percentage);
             }
         }
@@ -214,18 +239,21 @@ namespace BNG {
         /// Lever Moved to down position
         /// </summary>
         public virtual void OnLeverDown() {
-            
-            if (SwitchOffSound != null && !audioSource.isPlaying) {
+
+            if (SwitchOffSound != null) {
                 audioSource.clip = SwitchOffSound;
                 audioSource.Play();
             }
 
-            if(onLeverDown != null) {
+            if (onLeverDown != null) {
                 onLeverDown.Invoke();
             }
 
-            //switchedOn = false;
-            switchState = SwitchStates.OFF;
+            switchedOn = false;
+
+            if (DropLeverOnActivation && grab != null) {
+                grab.DropItem(false, false);
+            }
         }
 
         /// <summary>
@@ -233,18 +261,63 @@ namespace BNG {
         /// </summary>
         public virtual void OnLeverUp() {
 
-            if (SwitchOnSound != null && !audioSource.isPlaying) {
+            if (SwitchOnSound != null) {
                 audioSource.clip = SwitchOnSound;
                 audioSource.Play();
             }
 
             // Fire event
-            if(onLeverUp != null) {
+            if (onLeverUp != null) {
                 onLeverUp.Invoke();
             }
 
-            //switchedOn = true;
-            switchState = SwitchStates.ON;
+            switchedOn = true;
+
+            if(DropLeverOnActivation && grab != null) {
+                grab.DropItem(false, false);
+            }
         }
+
+#if UNITY_EDITOR
+        void OnDrawGizmosSelected() {
+
+            if (ShowEditorGizmos && !Application.isPlaying) {
+
+                Vector3 _origin = transform.position;
+                float rotationDifference = MaximumXRotation - MinimumXRotation;
+
+                float lineLength = 0.1f;
+                float arcLength = 0.1f;
+
+                //This is the color of the lines
+                UnityEditor.Handles.color = Color.cyan;
+
+                // Min / Max positions in World space
+                Vector3 minPosition = _origin + Quaternion.AngleAxis(MinimumXRotation, transform.right) * transform.forward * lineLength;
+                Vector3 maxPosition = _origin + Quaternion.AngleAxis(MaximumXRotation, transform.right) * transform.forward * lineLength;
+
+                //Draw the min / max angle lines
+                UnityEditor.Handles.DrawLine(_origin, minPosition);
+                UnityEditor.Handles.DrawLine(_origin, maxPosition);
+
+                // Draw starting position line
+                Debug.DrawLine(transform.position, _origin + Quaternion.AngleAxis(InitialXRotation, transform.right) * transform.forward * lineLength, Color.magenta);
+
+                // Fix for exactly 180
+                if(rotationDifference == 180) {
+                    minPosition = _origin + Quaternion.AngleAxis(MinimumXRotation + 0.01f, transform.right) * transform.forward * lineLength;
+                }
+
+                // Draw the arc
+                Vector3 _cross = Vector3.Cross(minPosition - _origin, maxPosition - _origin);
+                if(rotationDifference > 180) {
+                    _cross = Vector3.Cross(maxPosition - _origin, minPosition - _origin);
+                }
+
+                UnityEditor.Handles.color = new Color(0, 255, 255, 0.1f);
+                UnityEditor.Handles.DrawSolidArc(_origin, _cross, minPosition - _origin, rotationDifference, arcLength);
+            }
+        }
+#endif
     }
 }

@@ -20,7 +20,8 @@ namespace BNG {
         [Tooltip("If true the button can be pressed by physical object by utiizing a Spring Joint. Set to false if you don't need / want physics interactions, or are using this on a moving platform.")]
         public bool AllowPhysicsForces = true;
 
-        List<Grabber> grabbers; // Grabbers in our trigger
+        List<Grabber> grabbers = new List<Grabber>(); // Grabbers in our trigger
+        List<UITrigger> uiTriggers = new List<UITrigger>(); // UITriggers in our trigger
         SpringJoint joint;
 
         bool clickingDown = false;
@@ -34,7 +35,6 @@ namespace BNG {
         Rigidbody rigid;
 
         void Start() {
-            grabbers = new List<Grabber>();
             joint = GetComponent<SpringJoint>();
             rigid = GetComponent<Rigidbody>();
 
@@ -61,6 +61,7 @@ namespace BNG {
             buttonDownPosition = GetButtonDownPosition();
             buttonUpPosition = GetButtonUpPosition();
             bool grabberInButton = false;
+            bool UITriggerInButton = uiTriggers != null && uiTriggers.Count > 0;
 
             // Find a valid grabber to push down
             for (int x = 0; x < grabbers.Count; x++) {
@@ -70,22 +71,28 @@ namespace BNG {
                 }
             }
             // push button down
-            if (grabberInButton) {
+            if (grabberInButton || UITriggerInButton) {
                 float speed = ButtonSpeed; 
                 transform.localPosition = Vector3.Lerp(transform.localPosition, buttonDownPosition, speed * Time.deltaTime);
-                joint.spring = 0;
 
+                if(joint) {
+                    joint.spring = 0;
+                }
             }
             else {
                 // Let the spring push the button up if physics forces are enabled
                 if (AllowPhysicsForces) {
-                    joint.spring = SpringForce;
+                    if(joint) {
+                        joint.spring = SpringForce;
+                    }
                 }
                 // Need to lerp back into position if spring won't do it for us
                 else {
                     float speed = ButtonSpeed;
                     transform.localPosition = Vector3.Lerp(transform.localPosition, buttonUpPosition, speed * Time.deltaTime);
-                    joint.spring = 0;
+                    if(joint) {
+                        joint.spring = 0;
+                    }
                 }
             }
 
@@ -149,6 +156,7 @@ namespace BNG {
         }
 
         void OnTriggerEnter(Collider other) {
+            // Check Grabber
             Grabber grab = other.GetComponent<Grabber>();
             if (grab != null) {
                 if (grabbers == null) {
@@ -159,6 +167,18 @@ namespace BNG {
                     grabbers.Add(grab);
                 }
             }
+
+            // Check UITrigger, which is another type of activator
+            UITrigger trigger = other.GetComponent<UITrigger>();
+            if (trigger != null) {
+                if (uiTriggers == null) {
+                    uiTriggers = new List<UITrigger>();
+                }
+
+                if (!uiTriggers.Contains(trigger)) {
+                    uiTriggers.Add(trigger);
+                }
+            }
         }
 
         void OnTriggerExit(Collider other) {
@@ -166,6 +186,13 @@ namespace BNG {
             if (grab != null) {
                 if (grabbers.Contains(grab)) {
                     grabbers.Remove(grab);
+                }
+            }
+
+            UITrigger trigger = other.GetComponent<UITrigger>();
+            if (trigger != null) {
+                if (uiTriggers.Contains(trigger)) {
+                    uiTriggers.Remove(trigger);
                 }
             }
         }

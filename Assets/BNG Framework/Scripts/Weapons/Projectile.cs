@@ -61,7 +61,7 @@ namespace BNG {
             // Damage if possible
             Damageable d = collision.collider.GetComponent<Damageable>();
             if (d) {
-                d.DealDamage(Damage);
+                d.DealDamage(Damage, hitPosition, normal, true, gameObject, collision.collider.gameObject);
 
                 if (onDealtDamageEvent != null) {
                     onDealtDamageEvent.Invoke();

@@ -45,7 +45,7 @@ namespace BNG {
                             StartCoroutine(dealDelayedDamaged(damageable, 0.1f));
                         }
                         else {
-                            damageable.DealDamage(ExplosionDamage);
+                            damageable.DealDamage(ExplosionDamage, hit.ClosestPoint(transform.position), transform.eulerAngles, true, gameObject, hit.gameObject);
                         }
                     }
                 }

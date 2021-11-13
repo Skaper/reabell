@@ -10,44 +10,58 @@ namespace BNG {
     /// <summary>
     /// An example bow item. Configurable force and damage.
     /// </summary>
-    public class Bow : MonoBehaviour {
+    public class Bow : GrabbableEvents {
+
+
+        [Header("Bow Settings")]
 
         /// <summary>
         /// How much force to apply to the arrow, multiplied by how far back the bow is pulled
         /// </summary>
+        [Tooltip("")]
         public float BowForce = 50f;
+        [Tooltip("If True the BowModel Transform will align itself with the grabber holding the arrow")]
+        public bool AlignBowToArrow = true;
 
-        [Tooltip("Name of the prefab used to create an arrow. Must be in a /Resources/ directory.")]
-        public string ArrowPrefabName = "Arrow2";
+        [Tooltip("If AlignBowToArrow is true this transform will align itself with the grabber holding the arrow")]
+        public Transform BowModel; 
+
+        [Header("Arrow Settings")]
+        [Tooltip("Arrow will rotate around this if bow is held in left hand or ArrowRestLeftHanded is null")]
+        public Transform ArrowRest;
 
         /// <summary>
         /// If true, the player can grab a new arrow by holding the trigger down near the knock        
         /// </summary>
         public bool CanGrabArrowFromKnock = true;
 
-        [Tooltip("Arrow will rotate around this if bow is held in left hand or ArrowRestLeftHanded is null")]
-        public Transform ArrowRest; 
+        [Tooltip("Name of the prefab used to create an arrow. Must be in a /Resources/ directory.")]
+        public string ArrowPrefabName = "Arrow2";
 
         [Tooltip("Arrow will rotate around this if bow is being held in right hand")]
         public Transform ArrowRestLeftHanded; // Arrow will rotate around this
 
         public Transform ArrowKnock; // Pull this back
 
+        [Header("Arrow Positioning")]
         public bool IgnoreXPosition = false;
         public bool IgnoreYPosition = false;
         public bool AllowNegativeZ = true;
 
-
-        InputBridge input;
+        [Header("Arrow Grabbing")]
         public bool CanGrabArrow = false;
-        public Grabber ClosestGrabber;
 
+        [HideInInspector]
+        public Grabber ClosestGrabber;
+        [HideInInspector]
         public Arrow GrabbedArrow;
         Grabbable arrowGrabbable;
+        [HideInInspector]
         public Grabber arrowGrabber; // Which grabber is Grabbing the Arrow
-
+        [HideInInspector]
         public Vector3 LastValidPosition;
 
+        [Header("String Settings")]
         public float MaxStringDistance = 0.3f;
         public float StringDistance = 0;
 
@@ -62,6 +76,7 @@ namespace BNG {
         bool holdingArrow = false;
         Grabbable bowGrabbable;
 
+        [Header("Debug Text")]
         public Text PercentageUI;
 
         // Used for bow haptics
@@ -69,9 +84,7 @@ namespace BNG {
 
         AudioSource audioSource;
 
-        // Start is called before the first frame update
         void Start() {
-            input = InputBridge.Instance;
             initialKnockPosition = ArrowKnock.localPosition;
             bowGrabbable = GetComponent<Grabbable>();
             audioSource = GetComponent<AudioSource>();
@@ -89,7 +102,6 @@ namespace BNG {
             };
         }
 
-        // Update is called once per frame
         void Update() {
 
             updateDrawDistance();
@@ -138,12 +150,11 @@ namespace BNG {
             else {
                 StringDistance = 0;
             }
-            
+
             // Move arrow knock, align the arrow
-            if(holdingArrow) {
+            if (holdingArrow) {
                 setKnockPosition();
                 alignArrow();
-
                 checkDrawSound();
                 checkBowHaptics();
 
@@ -152,11 +163,13 @@ namespace BNG {
                     ReleaseArrow();
                 }
             }
-        }        
+
+            alignBow();
+        }
 
         Transform getArrowRest() {
 
-            if(bowGrabbable.GetPrimaryGrabber().HandSide == ControllerHand.Right && ArrowRestLeftHanded != null) {
+            if(bowGrabbable.GetPrimaryGrabber() != null && bowGrabbable.GetPrimaryGrabber().HandSide == ControllerHand.Right && ArrowRestLeftHanded != null) {
                 return ArrowRestLeftHanded;
             }
             
@@ -291,13 +304,50 @@ namespace BNG {
             ArrowKnock.localPosition = Vector3.Lerp(ArrowKnock.localPosition, initialKnockPosition, Time.deltaTime * 100);
         }
 
-        void alignArrow() {
+        protected virtual void alignArrow() {
             GrabbedArrow.transform.parent = this.transform;
             GrabbedArrow.GetComponent<Rigidbody>().collisionDetectionMode = CollisionDetectionMode.Discrete;
             GrabbedArrow.GetComponent<Rigidbody>().isKinematic = true;
 
             GrabbedArrow.transform.position = ArrowKnock.transform.position;
             GrabbedArrow.transform.LookAt(getArrowRest());
+        }
+
+        public Vector3 BowUp = Vector3.forward;
+
+        public float AlignBowSpeed = 20f;
+        protected virtual void alignBow() {
+
+            // Bail early
+            if (AlignBowToArrow == false || BowModel == null || grab == null || !grab.BeingHeld) {
+                return;
+            }
+
+            // Reset Alignment
+            if(grab != null && grab.BeingHeld) {
+                if(holdingArrow) {
+                    
+                    if (GrabbedArrow != null) {
+                        BowModel.transform.rotation = GrabbedArrow.transform.rotation;
+                    }
+                    else {
+                        BowModel.transform.localRotation = Quaternion.Slerp(BowModel.transform.localRotation, Quaternion.identity, Time.deltaTime * AlignBowSpeed);
+                    }
+                    Vector3 eulers = BowModel.transform.localEulerAngles;
+                    eulers.z = 0;
+
+                    BowModel.transform.localEulerAngles = eulers;
+                }
+                else {
+                    BowModel.transform.localRotation = Quaternion.Slerp(BowModel.transform.localRotation, Quaternion.identity, Time.deltaTime * AlignBowSpeed);
+                }
+            }
+        }
+
+        public virtual void ResetBowAlignment() {
+            if (BowModel != null) {
+                BowModel.localEulerAngles = Vector3.zero;
+            }
         }
 
         public void GrabArrow(Arrow arrow) {
@@ -349,6 +399,11 @@ namespace BNG {
             arrowGrabber.ResetHandGraphics();
 
             resetArrowValues();
+        }
+
+        public override void OnRelease() {
+            ResetBowAlignment();
+            resetStringPosition();
         }
 
         // Make sure all starting values are reset

@@ -30,7 +30,9 @@ namespace BNG {
         public List<Collider> collisions;
 
         void Start() {
-            fader = Camera.main.transform.GetComponent<ScreenFader>();
+            if(Camera.main) {
+                fader = Camera.main.transform.GetComponent<ScreenFader>();
+            }
         }
 
         void LateUpdate() {
@@ -101,6 +103,11 @@ namespace BNG {
 
             // Also ignore physics if this object has a joint attached to it
             if(!ignorePhysics && col.collider.GetComponent<Joint>()) {
+                ignorePhysics = true;
+            }
+
+            // Ignore the player's capsule collider
+            if(!ignorePhysics && col.gameObject.GetComponent<CharacterController>() != null) {
                 ignorePhysics = true;
             }
             

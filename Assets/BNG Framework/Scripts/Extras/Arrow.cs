@@ -138,7 +138,7 @@ namespace BNG {
                 
                 Damageable d = collision.gameObject.GetComponent<Damageable>();
                 if (d) {
-                    d.DealDamage(arrowDamage);
+                    d.DealDamage(arrowDamage, collision.GetContact(0).point, collision.GetContact(0).normal, true, gameObject, collision.collider.gameObject);
                 }
 
                 // Don't stick to dead objects
@@ -184,8 +184,9 @@ namespace BNG {
                 joint.breakTorque = float.MaxValue;
             }
             else if (colRigid != null && colRigid.isKinematic && collision.transform.localScale == Vector3.one) {
-                transform.parent = collision.transform;
+                transform.SetParent(collision.transform);
                 rb.useGravity = false;
+                rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
                 rb.isKinematic = true;
                 rb.constraints = RigidbodyConstraints.FreezeAll;
                 rb.WakeUp();
@@ -193,7 +194,7 @@ namespace BNG {
             // Finally, try parenting or just setting the arrow to kinematic
             else {
                 if (collision.transform.localScale == Vector3.one) {
-                    transform.parent = collision.transform;
+                    transform.SetParent(collision.transform);
                     rb.constraints = RigidbodyConstraints.FreezeAll;
                 }
                 else {

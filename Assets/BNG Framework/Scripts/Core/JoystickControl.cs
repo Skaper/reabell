@@ -9,6 +9,10 @@ namespace BNG {
     /// </summary>
     public class JoystickControl : MonoBehaviour {
 
+        [Header("Deadzone")]
+        [Tooltip("Any values below this threshold will not be passed to events")]
+        public float DeadZone = 0.001f;
+
         /// <summary>
         /// Minimum angle the Level can be rotated
         /// </summary>
@@ -25,9 +29,11 @@ namespace BNG {
         public float LeverPercentageX = 0;
 
         /// <summary>
-        /// Current Percentage of joystick on Z axis (forward / back)
+        /// Current Percentage of joystick on Y axis (forward / back)
         /// </summary>
-        public float LeverPercentageZ = 0;
+        public float LeverPercentageY = 0;
+
+        public Vector2 LeverVector;
 
         public bool UseSmoothLook = true;
         public float SmoothLookSpeed = 15f;
@@ -41,6 +47,11 @@ namespace BNG {
         /// Event called when Joystick value is changed
         /// </summary>
         public FloatFloatEvent onJoystickChange;
+
+        /// <summary>
+        /// Event called when Joystick value is changed
+        /// </summary>
+        public Vector2Event onJoystickVectorChange;
 
 
         Grabbable grab;
@@ -62,12 +73,14 @@ namespace BNG {
             // Update Kinematic Status.
             if (rb) {
                 rb.isKinematic = KinematicWhileInactive && !grab.BeingHeld;
-            }                        
+            }
+
+            // Align lever with Grabber
+            doJoystickLook();
 
             // Lock our local position and axis in Update to avoid jitter
             transform.localPosition = Vector3.zero;
             transform.localEulerAngles = new Vector3(transform.localEulerAngles.x, transform.localEulerAngles.y, 0);
-
 
             // Get the modified angle of of the lever. Use this to get percentage based on Min and Max angles.
             currentRotation = transform.localEulerAngles;
@@ -94,22 +107,43 @@ namespace BNG {
             }
 
             // Set percentage of level position
-            LeverPercentageX = (angleX - MinDegrees) / (MaxDegrees - MinDegrees) * 100;
-            LeverPercentageZ = (angleY - MinDegrees) / (MaxDegrees - MinDegrees) * 100;
+            LeverPercentageX = (angleY - MinDegrees) / (MaxDegrees - MinDegrees) * 100;
+            LeverPercentageY = (angleX - MinDegrees) / (MaxDegrees - MinDegrees) * 100;
 
             // Lever value changed event
-            OnJoystickChange(LeverPercentageX, LeverPercentageZ);
+            OnJoystickChange(LeverPercentageX, LeverPercentageY);
+
+            // Lever Vector Changed Event
+            float xInput = Mathf.Lerp(-1f, 1f, LeverPercentageX / 100);
+            float yInput = Mathf.Lerp(-1f, 1f, LeverPercentageY / 100);
+
+            // Reset any values that are inside the deadzone
+            if(DeadZone > 0) {
+                if(Mathf.Abs(xInput) < DeadZone) {
+                    xInput = 0;
+                }
+                if (Mathf.Abs(yInput) < DeadZone) {
+                    yInput = 0;
+                }
+            }
+
+            LeverVector = new Vector2(xInput, yInput);
+
+            OnJoystickChange(LeverVector);
         }
 
         void FixedUpdate() {
-            // Align lever with Grabber
-            doJoystickLook();
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
         }
 
         void doJoystickLook() {
 
             // Do Lever Look
             if (grab != null && grab.BeingHeld) {
+
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
 
                 // Store original rotation to be used with smooth look
                 Quaternion originalRot = transform.rotation;
@@ -125,17 +159,26 @@ namespace BNG {
                 if (UseSmoothLook) {
                     Quaternion newRot = transform.rotation;
                     transform.rotation = originalRot;
-                    transform.rotation = Quaternion.Lerp(transform.rotation, newRot, Time.deltaTime * SmoothLookSpeed);
+                    transform.rotation = Quaternion.Lerp(transform.rotation, newRot, Time.fixedDeltaTime * SmoothLookSpeed);
                 }
             }
             else if (grab != null && !grab.BeingHeld && rb.isKinematic) {
                 transform.localRotation = Quaternion.Lerp(transform.localRotation, Quaternion.identity, Time.deltaTime * SmoothLookSpeed);
+
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
             }
         }
         // Callback for lever percentage change
         public virtual void OnJoystickChange(float leverX, float leverY) {
             if (onJoystickChange != null) {
                 onJoystickChange.Invoke(leverX, leverY);
+            }
+        }
+
+        public virtual void OnJoystickChange(Vector2 joystickVector) {
+            if (onJoystickVectorChange != null) {
+                onJoystickVectorChange.Invoke(joystickVector);
             }
         }
     }

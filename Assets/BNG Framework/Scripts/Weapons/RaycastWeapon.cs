@@ -6,7 +6,7 @@ using UnityEngine.Events;
 namespace BNG {
 
     /// <summary>
-    /// An example weapon script. A more configurable Raycast weapon will be available later.
+    /// An example weapon script that can fire Raycasts or Projectile objects
     /// </summary>
     public class RaycastWeapon : GrabbableEvents {
 
@@ -40,7 +40,13 @@ namespace BNG {
         float lastShotTime;
 
         [Tooltip("Amount of force to apply to a Rigidbody once damaged")]
-        public float BulletImpactForce = 1000f;        
+        public float BulletImpactForce = 1000f;
+
+        /// <summary>
+        /// Maximum amount of internal ammo this weapon can hold. Does not account for attached clips.  For example, a shotgun has internal ammo
+        /// </summary>
+        [Tooltip("Current Internal Ammo if you are keeping track of ammo yourself. Firing will deduct from this number. Reloading will cause this to equal MaxInternalAmmo.")]
+        public float InternalAmmo = 0;
 
         /// <summary>
         /// Maximum amount of internal ammo this weapon can hold. Does not account for attached clips.  For example, a shotgun has internal ammo
@@ -73,6 +79,9 @@ namespace BNG {
 
         [Tooltip("Amount of force to apply to Projectile")]
         public float ShotForce = 10f;
+
+        [Tooltip("Amount of force to apply to the BulletCasingPrefab object")]
+        public float BulletCasingForce = 3f;
 
         [Header("Recoil : ")]
         /// <summary>
@@ -151,11 +160,19 @@ namespace BNG {
         [Tooltip("Play this sound on shoot")]
         public AudioClip GunShotSound;
 
+        [Tooltip("Volume to play the GunShotSound clip at. Range 0-1")]
+        [Range(0.0f, 1f)]
+        public float GunShotVolume = 0.75f;
+
         /// <summary>
         /// Play this sound if no ammo and user presses trigger
         /// </summary>
         [Tooltip("Play this sound if no ammo and user presses trigger")]
         public AudioClip EmptySound;
+
+        [Tooltip("Volume to play the EmptySound clip at. Range 0-1")]
+        [Range(0.0f, 1f)]
+        public float EmptySoundVolume = 1f;
 
         [Header("Slide Configuration : ")]
         /// <summary>
@@ -178,22 +195,15 @@ namespace BNG {
         /// </summary>
         float minSlideDistance = 0.001f;
 
-        [Header("Two-Handed Options : ")]
-        /// <summary>
-        /// (Optional) Look at this grabbable if being held with secondary hand
-        /// </summary>
-        [Tooltip("(Optional) Look at this grabbable if being held with secondary hand")]
-        public Grabbable SecondHandGrabbable;
+        [Header("Inputs : ")]
+        [Tooltip("Controller Input used to eject clip")]
+        public List<GrabbedControllerBinding> EjectInput = new List<GrabbedControllerBinding>() { GrabbedControllerBinding.Button2Down };
 
-        /// <summary>
-        /// How fast to look at the other grabbable when being held with two hands. A lower number will make the weapon feel heavier, but make the aiming hand lag behind the real hand.
-        /// </summary>
-        [Tooltip("How fast to look at the other grabbable when being held with two hands. A lower number will make the weapon feel heavier, but make the aiming hand lag behind the real hand.")]
-        public float SecondHandLookSpeed = 40f;
+        [Tooltip("Controller Input used to release the charging mechanism.")]
+        public List<GrabbedControllerBinding> ReleaseSlideInput = new List<GrabbedControllerBinding>() { GrabbedControllerBinding.Button1Down };
 
-        Rigidbody secondHandRigid;
-
-        
+        [Tooltip("Controller Input used to release reload the weapon if ReloadMethod = InternalAmmo.")]
+        public List<GrabbedControllerBinding> ReloadInput = new List<GrabbedControllerBinding>() { GrabbedControllerBinding.Button2Down };
 
         [Header("Shown for Debug : ")]
         /// <summary>
@@ -240,10 +250,6 @@ namespace BNG {
         void Start() {
             weaponRigid = GetComponent<Rigidbody>();
 
-            if(SecondHandGrabbable) {
-                secondHandRigid = SecondHandGrabbable.GetComponent<Rigidbody>();
-            }
-
             if (MuzzleFlashObject) {
                 MuzzleFlashObject.SetActive(false);
             }
@@ -264,8 +270,10 @@ namespace BNG {
                 TriggerTransform.localEulerAngles = new Vector3(triggerValue * 15, 0, 0);
             }
 
+            // Trigger up, reset values
             if (triggerValue <= 0.5) {
                 readyToShoot = true;
+                playedEmptySound = false;
             }
 
             // Fire gun if possible
@@ -276,36 +284,62 @@ namespace BNG {
                 readyToShoot = FiringMethod == FiringType.Automatic;
             }
 
+            // These are here for convenience. Could be called through GrabbableUnityEvents instead
+            checkSlideInput();
+            checkEjectInput();
+            CheckReloadInput();
+
             updateChamberedBullet();
 
             base.OnTrigger(triggerValue);
         }
 
-        // Snap slide back in to place Button 2 (A / X)
-        public override void OnButton1Down() {
-           
-            if(ws != null) {                
-                ws.UnlockBack();
+        void checkSlideInput() {
+            // Check for bound controller button to release the charging mechanism
+            for (int x = 0; x < ReleaseSlideInput.Count; x++) {
+                if (InputBridge.Instance.GetGrabbedControllerBinding(ReleaseSlideInput[x], thisGrabber.HandSide)) {
+                    UnlockSlide();
+                    break;
+                }
             }
-
-            base.OnButton1Down();
         }
 
-        // Eject clips when press Button 1 (B / Y)
-        public override void OnButton2Down() {
+        void checkEjectInput() {
+            // Check for bound controller button to eject magazine
+            for (int x = 0; x < EjectInput.Count; x++) {
+                if (InputBridge.Instance.GetGrabbedControllerBinding(EjectInput[x], thisGrabber.HandSide)) {
+                    EjectMagazine();
+                    break;
+                }
+            }
+        }
 
+        public virtual void CheckReloadInput() {
+            if(ReloadMethod == ReloadType.InternalAmmo) {
+                // Check for Reload input(s)
+                for (int x = 0; x < ReloadInput.Count; x++) {
+                    if (InputBridge.Instance.GetGrabbedControllerBinding(EjectInput[x], thisGrabber.HandSide)) {
+                        Reload();
+                        break;
+                    }
+                }
+            }            
+        }
+
+        public virtual void UnlockSlide() {
+            if (ws != null) {
+                ws.UnlockBack();
+            }
+        }
+
+        public virtual void EjectMagazine() {
             MagazineSlide ms = GetComponentInChildren<MagazineSlide>();
             if (ms != null) {
                 ms.EjectMagazine();
             }
+        }
 
-            base.OnButton2Down();
-        }
-        public override void OnRelease() {
-            if(SecondHandGrabbable != null && SecondHandGrabbable.GrabPhysics != GrabPhysics.Kinematic && secondHandRigid != null && secondHandRigid.isKinematic) {
-                secondHandRigid.isKinematic = false;
-            }
-        }
+        bool playedEmptySound = false;
         
         public virtual void Shoot() {
 
@@ -317,18 +351,23 @@ namespace BNG {
 
             // Need to Chamber round into weapon
             if(!BulletInChamber && MustChamberRounds) {
-                VRUtils.Instance.PlaySpatialClipAt(EmptySound, transform.position, 1f, 0.5f);
+                // Only play empty sound once per trigger down
+                if(!playedEmptySound) {
+                    VRUtils.Instance.PlaySpatialClipAt(EmptySound, transform.position, EmptySoundVolume, 0.5f);
+                    playedEmptySound = true;
+                }
+                
                 return;
             }
 
             // Need to release slide
             if(ws != null && ws.LockedBack) {
-                VRUtils.Instance.PlaySpatialClipAt(EmptySound, transform.position, 1f, 0.5f);
+                VRUtils.Instance.PlaySpatialClipAt(EmptySound, transform.position, EmptySoundVolume, 0.5f);
                 return;
             }
 
             // Create our own spatial clip
-            VRUtils.Instance.PlaySpatialClipAt(GunShotSound, transform.position, 1f);
+            VRUtils.Instance.PlaySpatialClipAt(GunShotSound, transform.position, GunShotVolume);
 
             // Haptics
             if (thisGrabber != null) {
@@ -339,7 +378,7 @@ namespace BNG {
             bool useProjectile = AlwaysFireProjectile || (FireProjectileInSlowMo && Time.timeScale < 1);
             if (useProjectile) {
                 GameObject projectile = Instantiate(ProjectilePrefab, MuzzlePointTransform.position, MuzzlePointTransform.rotation) as GameObject;
-                Rigidbody projectileRigid = projectile.GetComponent<Rigidbody>();
+                Rigidbody projectileRigid = projectile.GetComponentInChildren<Rigidbody>();
                 projectileRigid.AddForce(MuzzlePointTransform.forward * ShotForce, ForceMode.VelocityChange);
                 
                 Projectile proj = projectile.GetComponent<Projectile>();
@@ -411,16 +450,11 @@ namespace BNG {
         public virtual void ApplyRecoil() {
             if (weaponRigid != null && RecoilForce != Vector3.zero) {
 
-                // Two Handed Weapon Recoil not currently supported due to how look is handled
-                if (SecondHandGrabbable != null && SecondHandGrabbable.BeingHeld) {
-                    return;
-                }
-
                 // Make weapon springy for X seconds
                 grab.RequestSpringTime(RecoilDuration);
 
                 // Apply the Recoil Force
-                weaponRigid.AddForceAtPosition(transform.TransformDirection(RecoilForce), MuzzlePointTransform.position, ForceMode.VelocityChange);
+                weaponRigid.AddForceAtPosition(MuzzlePointTransform.TransformDirection(RecoilForce), MuzzlePointTransform.position, ForceMode.VelocityChange);
             }
         }
 
@@ -438,7 +472,7 @@ namespace BNG {
             // Damage if possible
             Damageable d = hit.collider.GetComponent<Damageable>();
             if (d) {
-                d.DealDamage(Damage);
+                d.DealDamage(Damage, hit.point, hit.normal, true, gameObject, hit.collider.gameObject);
 
                 if (onDealtDamageEvent != null) {
                     onDealtDamageEvent.Invoke(Damage);
@@ -446,7 +480,7 @@ namespace BNG {
             }
 
             // Call event
-            if(onRaycastHitEvent != null) {
+            if (onRaycastHitEvent != null) {
                 onRaycastHitEvent.Invoke(hit);
             }
         }
@@ -490,26 +524,42 @@ namespace BNG {
             if (ReloadMethod == ReloadType.InfiniteAmmo) {
                 return 9999;
             }
+            else if (ReloadMethod == ReloadType.InternalAmmo) {
+                return (int)InternalAmmo;
+            }
+            else if (ReloadMethod == ReloadType.ManualClip) {
+                return GetComponentsInChildren<Bullet>(false).Length;
+            }
 
+            // Default to bullet count
             return GetComponentsInChildren<Bullet>(false).Length;
         }
 
-        void removeBullet() {
+        public virtual void RemoveBullet() {
 
             // Don't remove bullet here
             if (ReloadMethod == ReloadType.InfiniteAmmo) {
                 return;
             }
 
-            Bullet firstB = GetComponentInChildren<Bullet>(false);
-
-            // Deactivate gameobject as this bullet has been consumed
-            if(firstB != null) {
-                Destroy(firstB.gameObject);
+            else if (ReloadMethod == ReloadType.InternalAmmo) {
+                InternalAmmo--;
+            }
+            else if (ReloadMethod == ReloadType.ManualClip) {
+                Bullet firstB = GetComponentInChildren<Bullet>(false);
+                // Deactivate gameobject as this bullet has been consumed
+                if (firstB != null) {
+                    Destroy(firstB.gameObject);
+                }
             }
 
             // Whenever we remove a bullet is a good time to check the chamber
             updateChamberedBullet();
+        }
+
+
+        public virtual void Reload() {
+            InternalAmmo = MaxInternalAmmo;
         }
 
         void updateChamberedBullet() {
@@ -524,7 +574,7 @@ namespace BNG {
 
             if(currentBulletCount > 0) {
                 // Remove the first bullet we find in the clip                
-                removeBullet();
+                RemoveBullet();
 
                 // That bullet is now in chamber
                 BulletInChamber = true;
@@ -535,8 +585,7 @@ namespace BNG {
             }
         }
 
-        IEnumerator shotRoutine;
-        
+        IEnumerator shotRoutine;        
 
         // Randomly scale / rotate to make them seem different
         void randomizeMuzzleFlashScaleRotation() {
@@ -564,13 +613,13 @@ namespace BNG {
                 onWeaponChargedEvent.Invoke();
             }
         }
-
+        
         protected virtual void ejectCasing() {
             GameObject shell = Instantiate(BulletCasingPrefab, EjectPointTransform.position, EjectPointTransform.rotation) as GameObject;
-            Rigidbody rb = shell.GetComponent<Rigidbody>();
+            Rigidbody rb = shell.GetComponentInChildren<Rigidbody>();
 
             if (rb) {
-                rb.AddRelativeForce(Vector3.right * 3, ForceMode.VelocityChange);
+                rb.AddRelativeForce(Vector3.right * BulletCasingForce, ForceMode.VelocityChange);
             }
 
             // Clean up shells
@@ -639,7 +688,6 @@ namespace BNG {
             yield return new WaitForEndOfFrame();
             MuzzleFlashObject.SetActive(false);
 
-
             // Eject Shell
             ejectCasing();
 
@@ -677,7 +725,8 @@ namespace BNG {
 
     public enum ReloadType {
         InfiniteAmmo,
-        ManualClip
+        ManualClip,
+        InternalAmmo
     }
 }
 

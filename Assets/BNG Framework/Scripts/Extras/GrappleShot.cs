@@ -5,13 +5,28 @@ using UnityEngine;
 namespace BNG {
     public class GrappleShot : GrabbableEvents {
 
+        [Header("Range")]
         public float MaxRange = 100f;
+
+        [Header("CharacterController Grapple Settings")]
+        [Tooltip("(CharacterController Player Only) How much movement speed to apply to the CharacterController to move towards the grapple")]
         public float GrappleReelForce = 0.5f;
 
-        // currentGrappleDistance must be greater than this to reel in
+        [Tooltip("currentGrappleDistance must be greater than this to reel in")]
         public float MinReelDistance = 0.25f;
 
+        [Header("Rigidbody Grapple Settings")]
+        [Tooltip("(Rigidbody Player Only) How much force to apply to the player to move towards the grapple")]
+        public float GrappleForce = 3f;
+
+        [Tooltip("(Rigidbody Player Only) Type of ForceMode to use to move the player towards the grapple point. ForceMode. ForceMode.Acceleration will let you preserve momentum and Swing Around. Use lower number for Acceleration (ex : 3). ForceMode.Velocity will immediately alter your player's velocity, resulting in a smooth but linear movement. Use higher numbers (ex : 200).")]
+        public ForceMode GrappleForceMode = ForceMode.Acceleration;
+
+        [Header("Raycast Layers")]
+
         public LayerMask GrappleLayers;
+
+        [Header("Component definitions")]
 
         public Transform MuzzleTransform;
         public Transform HitTargetPrefab;
@@ -24,13 +39,18 @@ namespace BNG {
         bool grappling = false;
         // Were we grappling last frame
         bool wasGrappling = false;
-        bool gravityEnabled = true;
 
         CharacterController characterController;
-        BNGPlayerController bngController;
+        SmoothLocomotion smoothLocomotion;
+        PlayerGravity playerGravity;
+        PlayerClimbing playerClimbing;
+        Rigidbody playerRigid;
+
         AudioSource audioSource;
 
         // How far away the grapple is in meters
+        [Header("Shown for Debug :")]
+
         public float currentGrappleDistance = 0;
 
         bool validTargetFound = false;// Is there something valid to grapple on to
@@ -47,8 +67,19 @@ namespace BNG {
 
         // Start is called before the first frame update
         void Start() {
-            characterController = GameObject.FindGameObjectWithTag("Player").GetComponentInChildren<CharacterController>();
-            bngController = GameObject.FindGameObjectWithTag("Player").GetComponentInChildren<BNGPlayerController>();
+
+            GameObject player = GameObject.FindGameObjectWithTag("Player");
+            if (player) {
+                characterController = player.GetComponentInChildren<CharacterController>();
+                smoothLocomotion = player.GetComponentInChildren<SmoothLocomotion>();
+                playerGravity = player.GetComponentInChildren<PlayerGravity>();
+                playerClimbing = player.GetComponentInChildren<PlayerClimbing>();
+                playerRigid = player.GetComponent<Rigidbody>();
+            }
+            else {
+                Debug.Log("No player object found.");
+            }
+
             audioSource = GetComponent<AudioSource>();
         }      
 
@@ -137,7 +168,7 @@ namespace BNG {
 
             // Reset Climbing
             ClimbHelper.transform.localPosition = Vector3.zero;
-            bngController.RemoveClimber(thisGrabber);
+            playerClimbing.RemoveClimber(thisGrabber);
             climbing = false;
 
             grappling = false;
@@ -261,7 +292,25 @@ namespace BNG {
 
                     // Turn off gravity before we move
                     changeGravity(false);
-                    characterController.Move(moveDirection * Time.deltaTime * triggerValue);
+
+                    // Use smooth loco method if available
+                    if(smoothLocomotion) {
+                        if (smoothLocomotion.ControllerType == PlayerControllerType.CharacterController) {
+                            smoothLocomotion.MoveCharacter(moveDirection * Time.deltaTime * triggerValue);
+                        }
+                        else if (smoothLocomotion.ControllerType == PlayerControllerType.Rigidbody) {
+                            if(GrappleForceMode == ForceMode.VelocityChange) {
+                                playerRigid.velocity = Vector3.MoveTowards(playerRigid.velocity, (moveDirection * GrappleForce) * Time.fixedDeltaTime, 1f);
+                            }
+                            else {
+                                playerRigid.AddForce(moveDirection * GrappleForce, GrappleForceMode);
+                            }
+                        }
+                    }
+                    // Fall back to character controller
+                    else if(characterController) {
+                        characterController.Move(moveDirection * Time.deltaTime * triggerValue);
+                    }
                 }
             }
             else if(validTargetFound && currentGrappleDistance <= MinReelDistance) {
@@ -276,7 +325,7 @@ namespace BNG {
                 if(!climbing && !isDynamic) {
                     // Add climbable / grabber
                     ClimbHelper.transform.localPosition = Vector3.zero;
-                    bngController.AddClimber(ClimbHelper, thisGrabber);
+                    playerClimbing.AddClimber(ClimbHelper, thisGrabber);
                     climbing = true;
                 }
                 
@@ -309,8 +358,9 @@ namespace BNG {
         }
 
         void changeGravity(bool gravityOn) {
-            gravityEnabled = gravityOn;
-            bngController.ToggleGravity(gravityOn);
+            if(playerGravity) {
+                playerGravity.ToggleGravity(gravityOn);
+            }
         }
     }
 }

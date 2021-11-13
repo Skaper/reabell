@@ -10,52 +10,105 @@ namespace BNG {
     /// </summary>
     public class VRUtils : MonoBehaviour {
 
-        public static VRUtils Instance;
+        public static VRUtils Instance {
+            get {
+                if (_instance == null) {
+                    _instance = FindObjectOfType<VRUtils>();
+                    if (_instance == null) {
+                        _instance = new GameObject("VRUtils").AddComponent<VRUtils>();
+                    }
+                }
+                return _instance;
+            }
+        }
+        private static VRUtils _instance;
 
         // Where to put our text messages
-        public Color DebugTextColor = Color.white;
+        // public Color DebugTextColor = Color.white;
+
+        public Color LogTextColor = Color.cyan;
+        public Color WarnTextColor = Color.yellow;
+        public Color ErrTextColor = Color.red;
+
         public Transform DebugTextHolder;
+        
         /// <summary>
         /// Maximum number of Text lines before we start removing them
         /// </summary>
         float MaxTextEntries = 10;
 
+        // Store so we can compare against future entries
+        public string LastDebugMsg;
+        int lastDebugMsgCount;
+
+
         void Awake() {
-            Instance = this;
+            if (_instance != null && _instance != this) {
+                Destroy(this);
+                return;
+            }
+
+            _instance = this;
         }                    
         
-        /// <summary>
-        /// Log to a WorldSpace object if available
-        /// </summary>
-        /// <param name="msg"></param>
         public void Log(string msg) {
-            Debug.Log(msg);
+            Debug.Log(msg, gameObject);
+            VRDebugLog(msg, LogTextColor);
+        }
 
+        public void Warn(string msg) {
+            Debug.LogWarning(msg, gameObject);
+            VRDebugLog(msg, WarnTextColor);
+        }
+
+        public void Error(string msg) {
+            Debug.LogError(msg, gameObject);
+            VRDebugLog(msg, ErrTextColor);
+        }
+
+
+        public void VRDebugLog(string msg, Color logColor) {
             // Add to Holder if available
-            if(DebugTextHolder != null) {
-                GameObject go = new GameObject();
-                go.transform.parent = DebugTextHolder;
-                go.transform.localPosition = Vector3.zero;
-                go.transform.localScale = Vector3.one;
-                go.transform.name = "Debug Text";
+            if (DebugTextHolder != null) {
+                if (msg == LastDebugMsg) {
+                    GameObject lastChild = DebugTextHolder.GetChild(DebugTextHolder.childCount - 1).gameObject;
+                    Text lastChildLine = lastChild.GetComponent<Text>();
+                    lastDebugMsgCount++;
 
-                Text textLine = go.AddComponent<Text>();
-                textLine.text = msg;
-                textLine.horizontalOverflow = HorizontalWrapMode.Wrap;
-                textLine.verticalOverflow = VerticalWrapMode.Overflow;
-                textLine.color = DebugTextColor;
-                textLine.fontSize = 32;
-                textLine.font = Resources.GetBuiltinResource(typeof(Font), "Arial.ttf") as Font;
-                textLine.raycastTarget = false;
-
-                RectTransform rect = go.GetComponent<RectTransform>();
-                rect.localScale = Vector3.one;
-                rect.localRotation = Quaternion.identity;
-
-                // Remove Text Line if we've exceed max
-                if(DebugTextHolder.childCount > MaxTextEntries) {
-                    DestroyImmediate(DebugTextHolder.GetChild(0).gameObject);
+                    lastChildLine.text = $"({lastDebugMsgCount}) {msg}";
                 }
+                else {
+                    GameObject go = new GameObject();
+                    go.transform.parent = DebugTextHolder;
+                    go.transform.localPosition = Vector3.zero;
+                    go.transform.localScale = Vector3.one;
+                    go.transform.name = "Debug Text";
+
+                    Text textLine = go.AddComponent<Text>();
+                    textLine.text = msg;
+                    textLine.horizontalOverflow = HorizontalWrapMode.Wrap;
+                    textLine.verticalOverflow = VerticalWrapMode.Overflow;
+                    textLine.color = logColor;
+                    textLine.fontSize = 32;
+                    textLine.font = Resources.GetBuiltinResource(typeof(Font), "Arial.ttf") as Font;
+                    textLine.raycastTarget = false;
+
+                    RectTransform rect = go.GetComponent<RectTransform>();
+                    rect.localScale = Vector3.one;
+                    rect.localRotation = Quaternion.identity;
+
+                    lastDebugMsgCount = 1;
+                }
+
+                CullDebugPanel();
+
+                LastDebugMsg = msg;
+            }
+        }
+
+        public void CullDebugPanel() {
+            for (int i = DebugTextHolder.childCount; i > MaxTextEntries; i--) {
+                Destroy(DebugTextHolder.GetChild(0).gameObject);
             }
         }
 

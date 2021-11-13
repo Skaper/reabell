@@ -2,14 +2,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
-using UnityEditorInternal;
 using UnityEngine;
 
 namespace BNG {
 
     public class IntegrationsEditor : EditorWindow {
 
-        [MenuItem("Window/VRIF Settings")]
+        [MenuItem("VRIF/VRIF Integrations")]
         public static void ShowWindow() {
             //Show existing window instance. If one doesn't exist, make one.
             EditorWindow.GetWindow(typeof(IntegrationsEditor));
@@ -20,15 +19,17 @@ namespace BNG {
 
             VRIFSettings.OculusIntegration = EditorGUILayout.Toggle("Oculus Integration", VRIFSettings.OculusIntegration);
             VRIFSettings.SteamVRIntegration = EditorGUILayout.Toggle("SteamVR Integration", VRIFSettings.SteamVRIntegration);
+            VRIFSettings.PicoIntegration = EditorGUILayout.Toggle("Pico Integration", VRIFSettings.PicoIntegration);
 
             GUILayout.Label("", EditorStyles.boldLabel);
 
             GUILayout.Label("*Enabling an integration will add the appropriate Scripting Define Symbol to your Project Settings for you.", EditorStyles.label);
-            
 
             GUILayout.Label("*Note : The project will rebuild after toggling an integration.", EditorStyles.boldLabel);
-        }
 
+            EditorGUILayout.Separator();
+
+        }
     }
 
     public class VRIFSettings {
@@ -60,6 +61,22 @@ namespace BNG {
                 }
                 else {
                     RemoveDefineSymbol("STEAM_VR_SDK");
+                }
+            }
+        }
+
+        public static bool PicoIntegration {
+            get {
+                return EditorPrefs.GetBool("PicoIntegration", false);
+            }
+            set {
+                EditorPrefs.SetBool("PicoIntegration", value);
+
+                if (value) {
+                    AddDefineSymbol("PICO_SDK");
+                }
+                else {
+                    RemoveDefineSymbol("PICO_SDK");
                 }
             }
         }

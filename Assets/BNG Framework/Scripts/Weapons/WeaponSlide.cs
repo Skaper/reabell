@@ -50,6 +50,15 @@ namespace BNG {
         Rigidbody rigid;
         float initialMass;
 
+        /// <summary>
+        /// Lock the slide position in place
+        /// </summary>
+        Vector3 _lockPosition;
+        /// <summary>
+        /// If true then the slides position is locked in Update and cannot be moved
+        /// </summary>
+        bool lockSlidePosition;
+
         void Start() {
             initialLocalPos = transform.localPosition;
             audioSource = GetComponent<AudioSource>();
@@ -64,8 +73,32 @@ namespace BNG {
             }
         }
 
+        public virtual void OnEnable() {
+            // Lock the slide in place when teleporting or snap turning
+            PlayerTeleport.OnBeforeTeleport += LockSlidePosition;
+            PlayerTeleport.OnAfterTeleport += UnlockSlidePosition;
+
+            //PlayerRotation.OnBeforeRotate += LockSlidePosition;
+            //PlayerRotation.OnAfterRotate += UnlockSlidePosition;
+        }
+
+        public virtual void OnDisable() {
+            PlayerTeleport.OnBeforeTeleport -= LockSlidePosition;
+            PlayerTeleport.OnAfterTeleport -= UnlockSlidePosition;
+
+            //PlayerRotation.OnBeforeRotate += LockSlidePosition;
+            //PlayerRotation.OnAfterRotate += UnlockSlidePosition;
+        }        
+
         // Update is called once per frame
         void Update() {
+
+            // If our slide is currently locked just set it and return early
+            if(lockSlidePosition) {
+                transform.localPosition = _lockPosition;
+                return;
+            }
+
             float localZ = transform.localPosition.z;
 
             if (LockedBack) {
@@ -81,7 +114,6 @@ namespace BNG {
                 // Clamp values
                 if (localZ <= MinLocalZ) {
                     transform.localPosition = new Vector3(initialLocalPos.x, initialLocalPos.y, MinLocalZ);
-
                     if (slidingBack) {
                         onSlideBack();
                     }
@@ -95,8 +127,6 @@ namespace BNG {
                     }
                 }
             }
-
-            
         }
 
         void FixedUpdate() {
@@ -104,13 +134,13 @@ namespace BNG {
             if (ZeroMassWhenNotHeld && parentGrabbable.BeingHeld && rigid) {
                 rigid.mass = initialMass;
             }
-            else if(ZeroMassWhenNotHeld && rigid) {
+            else if (ZeroMassWhenNotHeld && rigid) {
                 // Set mass to very low to prevent stuttering when not held
                 rigid.mass = 0.0001f;
-            }
+            }           
         }
 
-        public void LockBack() {
+        public virtual void LockBack() {
 
             if (!LockedBack) {
                 if (thisGrabbable.BeingHeld || parentGrabbable.BeingHeld) {
@@ -121,7 +151,7 @@ namespace BNG {
             }
         }
 
-        public void UnlockBack() {
+        public virtual void UnlockBack() {
 
             if (LockedBack) {
                 if (thisGrabbable.BeingHeld || parentGrabbable.BeingHeld) {
@@ -157,6 +187,25 @@ namespace BNG {
             }
 
             slidingBack = true;
+        }
+
+        public virtual void LockSlidePosition() {
+            // Lock the slide position if we aren't holding the object
+            if (parentGrabbable.BeingHeld && !thisGrabbable.BeingHeld && !lockSlidePosition) {
+                _lockPosition = transform.localPosition;
+                lockSlidePosition = true;
+            }
+        }
+
+        public virtual void UnlockSlidePosition() {
+            if (lockSlidePosition) {
+                StartCoroutine(UnlockSlideRoutine());
+            }
+        }
+
+        public IEnumerator UnlockSlideRoutine() {
+            yield return new WaitForSeconds(0.2f);
+            lockSlidePosition = false;
         }
 
         void playSoundInterval(float fromSeconds, float toSeconds, float volume) {

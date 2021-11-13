@@ -2,7 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-
+using UnityEngine.InputSystem;
 
 namespace BNG {
 
@@ -12,32 +12,33 @@ namespace BNG {
     }
     public class PlayerRotation : MonoBehaviour {
 
+        [Header("Input")]
         [Tooltip("Set to false to skip Update")]
         public bool AllowInput = true;
 
         [Tooltip("Used to determine whether to turn left / right. This can be an X Axis on the thumbstick, for example. -1 to snap left, 1 to snap right.")]
         public List<InputAxis> inputAxis = new List<InputAxis>() { InputAxis.RightThumbStickAxis };
 
-        [Tooltip("Snap rotation will rotate a fix amount of degrees on turn. Smooth will linearly rotate the player.")]
+        [Tooltip("Unity Input Action used to rotate the player")]
+        public InputActionReference RotateAction;
+
+        [Header("Smooth / Snap Turning")]
+        [Tooltip("Snap rotation will rotate a fixed amount of degrees on turn. Smooth will linearly rotate the player.")]
         public RotationMechanic RotationType = RotationMechanic.Snap;
 
-        [Tooltip("How m any degrees to rotate if RotationType is set to 'Snap'")]
+        [Header("Snap Turn Settings")]
+        [Tooltip("How many degrees to rotate if RotationType is set to 'Snap'")]
         public float SnapRotationAmount = 45f;
 
         [Tooltip("Thumbstick X axis must be >= this amount to be considered an input event")]
         public float SnapInputAmount = 0.75f;
 
+        [Header("Smooth Turn Settings")]
         [Tooltip("How fast to rotate the player if RotationType is set to 'Smooth'")]
         public float SmoothTurnSpeed = 40f;
 
         [Tooltip("Thumbstick X axis must be >= this amount to be considered an input event")]
         public float SmoothTurnMinInput = 0.1f;
-
-        /// <summary>
-        /// Allow Q,E to rotate player
-        /// </summary>
-        [Tooltip("Allow Q,E to rotate player")]
-        public bool AllowKeyboardInputs = true;
 
         float recentSnapTurnTime;        
 
@@ -46,14 +47,16 @@ namespace BNG {
         /// </summary>
         float rotationAmount = 0;
 
+        float xAxis;
         float previousXInput;
 
-        // Optionally provide a player controller to update last move time.
-        BNGPlayerController player;
+        #region Events
+        public delegate void OnBeforeRotateAction();
+        public static event OnBeforeRotateAction OnBeforeRotate;
 
-        void Start() {
-            player = GetComponentInParent<BNGPlayerController>();
-        }
+        public delegate void OnAfterRotateAction();
+        public static event OnAfterRotateAction OnAfterRotate;
+        #endregion
 
         void Update() {
 
@@ -61,7 +64,7 @@ namespace BNG {
                 return;
             }
 
-            float xAxis = GetAxisInput();
+            xAxis = GetAxisInput();
 
             if (RotationType == RotationMechanic.Snap) {
                 DoSnapRotation(xAxis);
@@ -84,11 +87,26 @@ namespace BNG {
             // Use the largest, non-zero value we find in our input list
             float lastVal = 0;
 
-            for (int i = 0; i < inputAxis.Count; i++) {
-                float axisVal = InputBridge.Instance.GetInputAxisValue(inputAxis[i]).x;
+            // Check Raw Input
+            if(inputAxis != null) {
+                for (int i = 0; i < inputAxis.Count; i++) {
+                    float axisVal = InputBridge.Instance.GetInputAxisValue(inputAxis[i]).x;
 
+                    // Always take this value if our last entry was 0. 
+                    if (lastVal == 0) {
+                        lastVal = axisVal;
+                    }
+                    else if (axisVal != 0 && axisVal > lastVal) {
+                        lastVal = axisVal;
+                    }
+                }
+            }
+
+            // Check Unity Input Action
+            if(RotateAction != null) {
+                float axisVal = RotateAction.action.ReadValue<Vector2>().x;
                 // Always take this value if our last entry was 0. 
-                if(lastVal == 0) {
+                if (lastVal == 0) {
                     lastVal = axisVal;
                 }
                 else if (axisVal != 0 && axisVal > lastVal) {
@@ -105,35 +123,26 @@ namespace BNG {
             rotationAmount = 0;
 
             // Snap Right
-            if (xInput >= SnapInputAmount && previousXInput < SnapInputAmount) {
+            if (xInput >= 0.1f && previousXInput < 0.1f) {
                 rotationAmount += SnapRotationAmount;
             }
             // Snap Left
-            else if (xInput <= -SnapInputAmount && previousXInput > -SnapInputAmount) {
+            else if (xInput <= -0.1f && previousXInput > -0.1f) {
                 rotationAmount -= SnapRotationAmount;
             }
 
-            // Only allow keyboard if no vr input provided
-            if (AllowKeyboardInputs && rotationAmount == 0) {
-                //Use keys to ratchet rotation
-                if (Input.GetKeyDown(KeyCode.Q)) {
-                    rotationAmount -= SnapRotationAmount;
-                }
-
-                if (Input.GetKeyDown(KeyCode.E)) {
-                    rotationAmount += SnapRotationAmount;
-                }
-            }
-
             if(Math.Abs(rotationAmount) > 0) {
+
+                // Call any Before Rotation Events
+                OnBeforeRotate?.Invoke();
+
                 // Apply rotation
-                //transform.rotation = Quaternion.Euler(new Vector3(transform.eulerAngles.x, transform.eulerAngles.y + rotationAmount, transform.eulerAngles.z));
-                transform.RotateAroundLocal(transform.up, rotationAmount);
+                transform.rotation = Quaternion.Euler(new Vector3(transform.eulerAngles.x, transform.eulerAngles.y + rotationAmount, transform.eulerAngles.z));
+
                 recentSnapTurnTime = Time.time;
 
-                if(player) {
-                    player.UpdateLastSnapTime();
-                }                                
+                // Call any After Rotation Events
+                OnAfterRotate?.Invoke();
             }
         }
 

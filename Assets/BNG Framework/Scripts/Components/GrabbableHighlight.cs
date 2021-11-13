@@ -12,44 +12,6 @@ namespace BNG {
         public bool HighlightOnGrabbable = true;
         public bool HighlightOnRemoteGrabbable = true;
 
-        Outline outline;
-
-        void Start() {
-            outline = GetComponent<Outline>();
-
-            if (HighlightOnGrabbable || HighlightOnRemoteGrabbable) {
-                if (outline == null) {
-                    // Is there a renderer attached?
-                    if (GetComponent<Renderer>()) {
-                        outline = gameObject.AddComponent<Outline>();
-                        outline.eraseRenderer = false;
-                        outline.enabled = false;
-                    }
-                    else {
-                        // Try in child object
-                        Renderer childRenderer = GetComponentInChildren<Renderer>();
-                        if (childRenderer != null) {
-                            outline = childRenderer.gameObject.AddComponent<Outline>();
-                            outline.eraseRenderer = false;
-                            outline.enabled = false;
-                        }
-                    }
-                }
-            }
-
-            // Make sure camera can see outlines
-            OutlineEffect oe = Camera.main.GetComponent<OutlineEffect>();
-            if (oe == null) {
-                oe = Camera.main.gameObject.AddComponent<OutlineEffect>();
-                oe.lineThickness = 2;
-                oe.lineIntensity = 1f;
-                oe.fillAmount = 0;
-                oe.lineColor0 = Color.white;
-                oe.cornerOutlines = true;
-                oe.scaleWithScreenSize = false;
-            }
-        }
-
         // Item has been grabbed by a Grabber
         public override void OnGrab(Grabber grabber) {
             UnhighlightItem();
@@ -80,15 +42,11 @@ namespace BNG {
             }
         }
         public void HighlightItem() {
-            if (outline != null) {
-                outline.enabled = true;
-            }
+            // Enable your highlight here
         }
 
         public void UnhighlightItem() {
-            if (outline != null) {
-                outline.enabled = false;
-            }
+            // Disable your highlight here
         }
     }
 }

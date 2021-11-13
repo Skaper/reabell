@@ -44,8 +44,11 @@ namespace BNG {
             if(lookAt) {
                 transform.LookAt(Camera.main.transform);
             }
-            else {
+            else if(Camera.main != null) {
                 lookAt = Camera.main.transform;
+            }
+            else if(Camera.main == null) {
+                return;
             }
 
             transform.parent = DrawLineTo;
@@ -57,8 +60,7 @@ namespace BNG {
             }
             
             if(childTransform) {
-                float dist = Vector3.Distance(transform.position, Camera.main.transform.position);
-                childTransform.gameObject.SetActive(dist <= MaxViewDistance);
+                childTransform.gameObject.SetActive(Vector3.Distance(transform.position, Camera.main.transform.position) <= MaxViewDistance);
             }
         }
     }

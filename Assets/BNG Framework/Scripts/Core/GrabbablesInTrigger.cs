@@ -61,10 +61,10 @@ namespace BNG {
         void updateClosestGrabbable() {
 
             // Remove any Grabbables that may have been destroyed, deactivated, etc.
-            NearbyGrabbables = sanitizeGrabbables(NearbyGrabbables);
+            NearbyGrabbables = SanitizeGrabbables(NearbyGrabbables);
 
             // Find any grabbables that can potentially be picked up
-            ValidGrabbables = getValidGrabbables(NearbyGrabbables);
+            ValidGrabbables = GetValidGrabbables(NearbyGrabbables);
 
             // Assign closest grabbable
             ClosestGrabbable = GetClosestGrabbable(ValidGrabbables);
@@ -118,7 +118,7 @@ namespace BNG {
             return _closest;
         }
 
-        Dictionary<Collider, Grabbable> getValidGrabbables(Dictionary<Collider, Grabbable> grabs) {
+        public Dictionary<Collider, Grabbable> GetValidGrabbables(Dictionary<Collider, Grabbable> grabs) {
             _valids = new Dictionary<Collider, Grabbable>();
 
             if (grabs == null) {
@@ -127,7 +127,7 @@ namespace BNG {
 
             // Check for objects that need to be removed from RemoteGrabbables
             foreach (var kvp in grabs) {
-                if (isValidGrabbale(kvp.Key, kvp.Value) && !_valids.ContainsKey(kvp.Key)) {
+                if (isValidGrabbable(kvp.Key, kvp.Value) && !_valids.ContainsKey(kvp.Key)) {
                     _valids.Add(kvp.Key, kvp.Value);
                 }
             }
@@ -135,7 +135,7 @@ namespace BNG {
             return _valids;
         }
 
-        protected virtual bool isValidGrabbale(Collider col, Grabbable grab) {
+        protected virtual bool isValidGrabbable(Collider col, Grabbable grab) {
 
             // Object has been deactivated. Remove it
             if (col == null || grab == null || !grab.isActiveAndEnabled || !col.enabled) {
@@ -160,7 +160,7 @@ namespace BNG {
             return true;
         }
 
-        Dictionary<Collider, Grabbable> sanitizeGrabbables(Dictionary<Collider, Grabbable> grabs) {
+        public virtual Dictionary<Collider, Grabbable> SanitizeGrabbables(Dictionary<Collider, Grabbable> grabs) {
             _filtered = new Dictionary<Collider, Grabbable>();
 
             if (grabs == null) {
@@ -174,6 +174,9 @@ namespace BNG {
                     if (g.Value.BreakDistance > 0 && Vector3.Distance(g.Key.transform.position, transform.position) > g.Value.BreakDistance) {
                         continue;
                     }
+
+                    // Collision check via raycast
+
 
                     _filtered.Add(g.Key, g.Value);
                 }
@@ -194,7 +197,7 @@ namespace BNG {
         }
 
         public virtual void RemoveNearbyGrabbable(Collider col, Grabbable grabObject) {
-            if (grabObject != null && NearbyGrabbables.ContainsKey(col)) {
+            if (grabObject != null && NearbyGrabbables != null && NearbyGrabbables.ContainsKey(col)) {
                 NearbyGrabbables.Remove(col);
             }
         }
@@ -212,11 +215,20 @@ namespace BNG {
         }
 
         public virtual void AddValidRemoteGrabbable(Collider col, Grabbable grabObject) {
+            
+            // Sanity check
+            if(col == null || grabObject == null) {
+                return;
+            }
+
+            // Ensure our collection has been initialized
+            if (ValidRemoteGrabbables == null) {
+                ValidRemoteGrabbables = new Dictionary<Collider, Grabbable>();
+            }
+
             try {
                 if (grabObject != null && grabObject.RemoteGrabbable && col != null && !ValidRemoteGrabbables.ContainsKey(col)) {
-                    if (ValidRemoteGrabbables == null) {
-                        ValidRemoteGrabbables = new Dictionary<Collider, Grabbable>();
-                    }
+                    
                     ValidRemoteGrabbables.Add(col, grabObject);
                 }
             }

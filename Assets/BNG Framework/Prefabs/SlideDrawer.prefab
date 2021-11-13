@@ -1,5 +1,84 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &859741988
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 859741989}
+  - component: {fileID: 859741991}
+  - component: {fileID: 859741990}
+  m_Layer: 0
+  m_Name: Renderer
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &859741989
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 859741988}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 0.97347, y: 1.65, z: 0.03612971}
+  m_Children: []
+  m_Father: {fileID: 1462198687061520726}
+  m_RootOrder: 0
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!33 &859741991
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 859741988}
+  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &859741990
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 859741988}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: f4d1c14f9d7087643856f2c5965d05f7, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
 --- !u!1 &1166356011
 GameObject:
   m_ObjectHideFlags: 0
@@ -9,7 +88,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1166356012}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: GrabPoint
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -42,7 +121,7 @@ GameObject:
   - component: {fileID: 1462198685154433489}
   - component: {fileID: 1462198685154433488}
   - component: {fileID: 1462198685154433495}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: DrawerLip
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -134,7 +213,7 @@ GameObject:
   - component: {fileID: 1462198685234360341}
   - component: {fileID: 1462198685234360343}
   - component: {fileID: 1462198685234360342}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: DrawerHandle (2)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -213,7 +292,7 @@ GameObject:
   - component: {fileID: 1462198685799315832}
   - component: {fileID: 1462198685799315834}
   - component: {fileID: 1462198685799315833}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: DrawerHandle (1)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -292,7 +371,7 @@ GameObject:
   - component: {fileID: 1462198686170805541}
   - component: {fileID: 1462198686170805543}
   - component: {fileID: 1462198686170805542}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: DrawerHandle
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -372,7 +451,7 @@ GameObject:
   - component: {fileID: 1462198686307778972}
   - component: {fileID: 1462198686307778979}
   - component: {fileID: 1462198686307778978}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: DrawerBack
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -465,7 +544,7 @@ GameObject:
   - component: {fileID: 1462198686381501380}
   - component: {fileID: 1462198686381501387}
   - component: {fileID: 1462198686381501386}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: DrawerBottom
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -558,7 +637,7 @@ GameObject:
   - component: {fileID: 1462198686582754306}
   - component: {fileID: 1462198686582754305}
   - component: {fileID: 1462198686582754304}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: Drawer (2)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -651,7 +730,7 @@ GameObject:
   - component: {fileID: 1462198686591161789}
   - component: {fileID: 1462198686591161788}
   - component: {fileID: 1462198686591161795}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: DeskDrawer
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -751,7 +830,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1462198686877741570}
   - component: {fileID: 1462198686877741557}
-  - component: {fileID: 1462198686877741556}
   - component: {fileID: 1462198686877741563}
   - component: {fileID: 1462198686877741562}
   - component: {fileID: 1462198686877741561}
@@ -759,9 +837,8 @@ GameObject:
   - component: {fileID: 1462198686877741567}
   - component: {fileID: 1462198686877741566}
   - component: {fileID: 1462198686877741565}
-  - component: {fileID: 1462198686877741564}
   - component: {fileID: 1462198686877741571}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: SliderHandle
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -792,45 +869,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1462198686877741569}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
---- !u!23 &1462198686877741556
-MeshRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1462198686877741569}
-  m_Enabled: 0
-  m_CastShadows: 1
-  m_ReceiveShadows: 1
-  m_DynamicOccludee: 1
-  m_MotionVectors: 1
-  m_LightProbeUsage: 1
-  m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
-  m_RenderingLayerMask: 1
-  m_RendererPriority: 0
-  m_Materials:
-  - {fileID: 0}
-  m_StaticBatchInfo:
-    firstSubMesh: 0
-    subMeshCount: 0
-  m_StaticBatchRoot: {fileID: 0}
-  m_ProbeAnchor: {fileID: 0}
-  m_LightProbeVolumeOverride: {fileID: 0}
-  m_ScaleInLightmap: 1
-  m_ReceiveGI: 1
-  m_PreserveUVs: 0
-  m_IgnoreNormalsForChartDetection: 0
-  m_ImportantGI: 0
-  m_StitchLightmapSeams: 1
-  m_SelectedEditorRenderState: 3
-  m_MinimumChartSize: 4
-  m_AutoUVMaxDistance: 0.5
-  m_AutoUVMaxAngle: 89
-  m_LightmapParameters: {fileID: 0}
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
-  m_SortingOrder: 0
 --- !u!65 &1462198686877741563
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -852,7 +890,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1462198686877741569}
   serializedVersion: 2
-  m_Mass: 1
+  m_Mass: 10
   m_Drag: 0.5
   m_AngularDrag: 0.05
   m_UseGravity: 0
@@ -896,7 +934,7 @@ MonoBehaviour:
   BeingHeld: 0
   GrabButton: 0
   Grabtype: 0
-  GrabPhysics: 0
+  GrabPhysics: 4
   GrabMechanic: 1
   GrabSpeed: 10
   RemoteGrabbable: 0
@@ -907,23 +945,43 @@ MonoBehaviour:
   HideHandGraphics: 0
   ParentToHands: 0
   ParentHandModel: 1
+  SnapHandModel: 1
+  CanBeDropped: 1
+  CanBeSnappedToSnapZone: 0
+  ForceDisableKinematicOnDrop: 0
+  InstantMovement: 0
   CustomHandPose: 0
   SecondaryGrabBehavior: 0
+  TwoHandedPosition: 0
+  TwoHandedPostionLerpAmount: 0.5
+  TwoHandedRotation: 1
+  TwoHandedRotationLerpAmount: 0.5
+  TwoHandedDropBehavior: 0
+  TwoHandedLookVector: 0
+  SecondHandLookSpeed: 40
+  SecondaryGrabbable: {fileID: 0}
   OtherGrabbableMustBeGrabbed: {fileID: 0}
   CollisionSpring: 3000
   CollisionSlerp: 500
-  CanBeDropped: 1
-  CanBeSnappedToSnapZone: 0
+  CollisionLinearMotionX: 2
+  CollisionLinearMotionY: 2
+  CollisionLinearMotionZ: 2
+  CollisionAngularMotionX: 2
+  CollisionAngularMotionY: 2
+  CollisionAngularMotionZ: 2
+  ApplyCorrectiveForce: 1
+  MoveVelocityForce: 3000
+  MoveAngularVelocityForce: 90
   LastGrabTime: 0
   LastDropTime: 0
   AddControllerVelocityOnDrop: 1
-  SecondaryGrabbable: {fileID: 0}
-  SecondHandLookSpeed: 40
+  collisions: []
+  ActiveGrabPoint: {fileID: 0}
   SecondaryLookOffset: {x: 0, y: 0, z: 0}
   SecondaryLookAtTransform: {fileID: 0}
   LocalOffsetTransform: {fileID: 0}
-  MirrorOffsetForOtherHand: 1
   GrabPoints: []
+  UseCustomInspector: 1
 --- !u!114 &1462198686877741567
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1060,30 +1118,10 @@ MonoBehaviour:
   HapticsOnValidPickup: 1
   HapticsOnValidRemotePickup: 0
   HapticsOnCollision: 0
+  HapticsOnGrab: 1
   VibrateFrequency: 0.3
   VibrateAmplitude: 0.1
   VibrateDuration: 0.1
---- !u!114 &1462198686877741564
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1462198686877741569}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7ad23062ea9cdf44a9d1a4677a5ac042, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  ConstrainLocalX: 1
-  LocalXMin: -0.16
-  LocalXMax: 0.15
-  ConstrainLocalY: 0
-  LocalYMin: -1
-  LocalYMax: 1
-  ConstrainLocalZ: 0
-  LocalZMin: -1
-  LocalZMax: 1
 --- !u!114 &1462198686877741571
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1166,10 +1204,8 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1462198687061520726}
-  - component: {fileID: 1462198687061520721}
-  - component: {fileID: 1462198687061520720}
   - component: {fileID: 1462198687061520727}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: DrawerFront
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1185,58 +1221,12 @@ Transform:
   m_GameObject: {fileID: 1462198687061520725}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.9, z: -0.48248288}
-  m_LocalScale: {x: 0.97347, y: 1.65, z: 0.03612971}
-  m_Children: []
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children:
+  - {fileID: 859741989}
   m_Father: {fileID: 1462198686591161794}
   m_RootOrder: 3
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!33 &1462198687061520721
-MeshFilter:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1462198687061520725}
-  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
---- !u!23 &1462198687061520720
-MeshRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1462198687061520725}
-  m_Enabled: 1
-  m_CastShadows: 1
-  m_ReceiveShadows: 1
-  m_DynamicOccludee: 1
-  m_MotionVectors: 1
-  m_LightProbeUsage: 1
-  m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
-  m_RenderingLayerMask: 1
-  m_RendererPriority: 0
-  m_Materials:
-  - {fileID: 2100000, guid: f4d1c14f9d7087643856f2c5965d05f7, type: 2}
-  m_StaticBatchInfo:
-    firstSubMesh: 0
-    subMeshCount: 0
-  m_StaticBatchRoot: {fileID: 0}
-  m_ProbeAnchor: {fileID: 0}
-  m_LightProbeVolumeOverride: {fileID: 0}
-  m_ScaleInLightmap: 1
-  m_ReceiveGI: 1
-  m_PreserveUVs: 0
-  m_IgnoreNormalsForChartDetection: 0
-  m_ImportantGI: 0
-  m_StitchLightmapSeams: 1
-  m_SelectedEditorRenderState: 3
-  m_MinimumChartSize: 4
-  m_AutoUVMaxDistance: 0.5
-  m_AutoUVMaxAngle: 89
-  m_LightmapParameters: {fileID: 0}
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
-  m_SortingOrder: 0
 --- !u!65 &1462198687061520727
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -1248,8 +1238,8 @@ BoxCollider:
   m_IsTrigger: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Size: {x: 0.9999998, y: 0.90626705, z: 1}
-  m_Center: {x: 0, y: -0.04686649, z: 0}
+  m_Size: {x: 0.97347, y: 1.65, z: 0.03612971}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1462198687183267130
 GameObject:
   m_ObjectHideFlags: 0
@@ -1262,7 +1252,7 @@ GameObject:
   - component: {fileID: 1462198687183267126}
   - component: {fileID: 1462198687183267125}
   - component: {fileID: 1462198687183267124}
-  m_Layer: 0
+  m_Layer: 10
   m_Name: Drawer (1)
   m_TagString: Untagged
   m_Icon: {fileID: 0}

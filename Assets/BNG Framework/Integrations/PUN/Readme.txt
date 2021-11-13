@@ -1,4 +1,6 @@
-This integration package will get you started with PhotonPUN. The included scripts will connect you to a room and sync the player's head, hands, and hand animations.
+This integration package will get you started with PhotonPUN. The included scripts will connect you to a room, sync the player's head, hands, hand animations. The NetworkedGrabbable script will allow you to sync a Grabbables position / rotation.
+
+Check out the online documentation here : https://wiki.beardedninjagames.com/en/Integrations/PhotonPUN2
 
 1. Download and import the PhotonPUN package : https://assetstore.unity.com/packages/tools/network/pun-2-free-119922
 

@@ -2,6 +2,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
+#if INVECTOR_BASIC || INVECTOR_AI_TEMPLATE
+using Invector;
+#endif
 
 namespace BNG {
     /// <summary>
@@ -29,6 +32,9 @@ namespace BNG {
         /// </summary>
         [Tooltip("Destroy this object on Death? False if need to respawn.")]
         public bool DestroyOnDeath = true;
+
+        [Tooltip("If this object is a Grabbable it can be dropped on Death")]
+        public bool DropOnDeath = true;
 
         /// <summary>
         /// How long to wait before destroying this objects
@@ -64,6 +70,13 @@ namespace BNG {
         [Tooltip("Optional Event to be called once the object has been respawned, if Respawn is true and after RespawnTime")]
         public UnityEvent onRespawn;
 
+#if INVECTOR_BASIC || INVECTOR_AI_TEMPLATE
+        // Invector damage integration
+        [Header("Invector Integration")]
+        [Tooltip("If true, damage data will be sent to Invector object using 'ApplyDamage'")]
+        public bool SendDamageToInvector = true;
+#endif
+
         bool destroyed = false;
 
         Rigidbody rigid;
@@ -72,12 +85,16 @@ namespace BNG {
         private void Start() {
             _startingHealth = Health;
             rigid = GetComponent<Rigidbody>();
-            if(rigid) {
+            if (rigid) {
                 initialWasKinematic = rigid.isKinematic;
-            }            
+            }
         }
 
         public virtual void DealDamage(float damageAmount) {
+            DealDamage(damageAmount, transform.position);
+        }
+
+        public virtual void DealDamage(float damageAmount, Vector3? hitPosition = null, Vector3? hitNormal = null, bool reactToHit = true, GameObject sender = null, GameObject receiver = null) {
 
             if (destroyed) {
                 return;
@@ -85,9 +102,20 @@ namespace BNG {
 
             Health -= damageAmount;
 
-            if(onDamaged != null) {
-                onDamaged.Invoke(damageAmount);
+            onDamaged?.Invoke(damageAmount);
+
+            // Invector Integration
+#if INVECTOR_BASIC || INVECTOR_AI_TEMPLATE
+            if(SendDamageToInvector) {
+                var d = new Invector.vDamage();
+                d.hitReaction = reactToHit;
+                d.hitPosition = (Vector3)hitPosition;
+                d.receiver = receiver == null ? this.gameObject.transform : null;
+                d.damageValue = (int)damageAmount;
+
+                this.gameObject.ApplyDamage(new Invector.vDamage(d));
             }
+#endif
 
             if (Health <= 0) {
                 DestroyThis();
@@ -114,19 +142,19 @@ namespace BNG {
             }
 
             // Spawn object
-            if(SpawnOnDeath != null) {
+            if (SpawnOnDeath != null) {
                 var go = GameObject.Instantiate(SpawnOnDeath);
                 go.transform.position = transform.position;
                 go.transform.rotation = transform.rotation;
             }
 
             // Force to kinematic if rigid present
-            if(rigid) {
+            if (rigid) {
                 rigid.isKinematic = true;
-            } 
+            }
 
             // Invoke Callback Event
-            if(onDestroyed != null) {
+            if (onDestroyed != null) {
                 onDestroyed.Invoke();
             }
 
@@ -137,6 +165,13 @@ namespace BNG {
                 StartCoroutine(RespawnRoutine(RespawnTime));
             }
 
+            // Drop this if the player is holding it
+            Grabbable grab = GetComponent<Grabbable>();
+            if (DropOnDeath && grab != null && grab.BeingHeld) {
+                grab.DropItem(false, true);
+            }
+
+            // Remove an decals that may have been parented to this object
             if (RemoveBulletHolesOnDeath) {
                 BulletHole[] holes = GetComponentsInChildren<BulletHole>();
                 foreach (var hole in holes) {
@@ -171,12 +206,12 @@ namespace BNG {
             }
 
             // Reset kinematic property if applicable
-            if(rigid) {
+            if (rigid) {
                 rigid.isKinematic = initialWasKinematic;
             }
 
             // Call events
-            if(onRespawn != null) {
+            if (onRespawn != null) {
                 onRespawn.Invoke();
             }
         }

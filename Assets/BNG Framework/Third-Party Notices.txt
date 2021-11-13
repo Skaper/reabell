@@ -1,6 +1,6 @@
 This asset is governed by the Asset Store EULA; however, the following components are governed by the licenses indicated below:
 
-A. Oculus Hand Models (/Models/Hands/OculusHands) and Column Glow Shader (/Materials/ColumnGlow) :
+A. Oculus Hand Models (/Models/Hands/OculusHands), Controllers (/Models/Oculus/) and Column Glow Shader (/Materials/ColumnGlow) :
 
 Copyright (c) Facebook Technologies, LLC and its affiliates. All rights reserved.
 

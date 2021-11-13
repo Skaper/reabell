@@ -1,9 +1,8 @@
 ﻿using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace BNG {
-    public class Marker : MonoBehaviour {
+    public class Marker : GrabbableEvents {
 
         public Material DrawMaterial;
         public Color DrawColor = Color.red;
@@ -18,85 +17,117 @@ namespace BNG {
         /// Minimum distance required from points to place drawing down
         /// </summary>
         public float MinDrawDistance = 0.02f;
+        public float ReuseTolerance = 0.001f;
 
-        Transform lastDrawPoint;
+        bool IsNewDraw = false;
+        Vector3 lastDrawPoint;
+        LineRenderer LineRenderer;
 
         // Use this to store our Marker's LineRenderers
         Transform root;
+        Transform lastTransform;
+        Coroutine drawRoutine = null;
+        float lastLineWidth = 0;
+        int renderLifeTime = 0;
 
-        void Update() {
-            RaycastHit hit;
-            if(Physics.Raycast(RaycastStart.position, RaycastStart.up, out hit, RaycastLength, DrawingLayers, QueryTriggerInteraction.Ignore)) {                
 
-                float tipDistance = Vector3.Distance(hit.point, RaycastStart.transform.position);
-                float tipDercentage = tipDistance / RaycastLength;
-                Vector3 drawStart = hit.point + (-RaycastStart.up * 0.0001f);
-                Quaternion drawRotation = Quaternion.FromToRotation(Vector3.back, hit.normal);
-
-                float lineWidth = LineWidth * (1 - tipDercentage);
-
-                InitDraw(drawStart, drawRotation, lineWidth, DrawColor);
+        public override void OnGrab(Grabber grabber) {
+            if (drawRoutine == null) {
+                drawRoutine = StartCoroutine(WriteRoutine());
             }
-            else {
-                // No longer drawing, disconnect point
-                lastDrawPoint = null;
+
+            base.OnGrab(grabber);
+        }
+
+        public override void OnRelease() {
+            if (drawRoutine != null) {
+                StopCoroutine(drawRoutine);
+                drawRoutine = null;
+            }
+            base.OnRelease();
+        }
+
+        IEnumerator WriteRoutine() {
+            while (true) {
+                if (Physics.Raycast(RaycastStart.position, RaycastStart.up, out RaycastHit hit, RaycastLength, DrawingLayers, QueryTriggerInteraction.Ignore)) {
+                    float tipDistance = Vector3.Distance(hit.point, RaycastStart.transform.position);
+                    float tipDercentage = tipDistance / RaycastLength;
+                    Vector3 drawStart = hit.point + (-RaycastStart.up * 0.0005f);
+                    Quaternion drawRotation = Quaternion.FromToRotation(Vector3.back, hit.normal);
+                    float lineWidth = LineWidth * (1 - tipDercentage);
+                    InitDraw(drawStart, drawRotation, lineWidth, DrawColor);
+                }
+                else {
+                    IsNewDraw = true;
+                }
+                yield return new WaitForFixedUpdate();
             }
         }
 
-        public virtual Transform InitDraw(Vector3 position, Quaternion rotation, float lineWidth, Color lineColor) {
-            
-            // Fresh draw
-            if (lastDrawPoint == null) {
-                lastDrawPoint = new GameObject().transform;
-                lastDrawPoint.position = position;
+        void InitDraw(Vector3 position, Quaternion rotation, float lineWidth, Color lineColor) {
+            if (IsNewDraw) {
+                lastDrawPoint = position;
+                DrawPoint(lastDrawPoint, position, lineWidth, lineColor, rotation);
+                IsNewDraw = false;
             }
-            // Already started drawing, connect lines
             else {
-                float dist = Vector3.Distance(lastDrawPoint.position, position);
+                float dist = Vector3.Distance(lastDrawPoint, position);
                 if (dist > MinDrawDistance) {
-                    lastDrawPoint = DrawPoint(lastDrawPoint, position, lineWidth, DrawColor);
-                    lastDrawPoint.rotation = rotation;
+                    lastDrawPoint = DrawPoint(lastDrawPoint, position, lineWidth, DrawColor, rotation);
                 }
             }
-
-            return DrawPoint(lastDrawPoint, position, lineWidth, lineColor);
         }
 
-        public virtual Transform DrawPoint(Transform lastDrawPoint, Vector3 endPosition, float lineWidth, Color lineColor) {
-            if (lastDrawPoint) {
-
-                Transform newPoint = new GameObject().transform;
-                newPoint.name = "DrawLine";
-
-                // Make sure we have a root object to store our lines in
-                if(root == null) {
+        Vector3 DrawPoint(Vector3 lastDrawPoint, Vector3 endPosition, float lineWidth, Color lineColor, Quaternion rotation) {
+            var dif = Mathf.Abs(lastLineWidth - lineWidth);
+            lastLineWidth = lineWidth;
+            if (dif > ReuseTolerance || renderLifeTime >= 98) {
+                LineRenderer = null;
+                renderLifeTime = 0;
+            }
+            else {
+                renderLifeTime += 1;
+            }
+            if (IsNewDraw || LineRenderer == null) {
+                lastTransform = new GameObject().transform;
+                lastTransform.name = "DrawLine";
+                if (root == null) {
                     root = new GameObject().transform;
                     root.name = "MarkerLineHolder";
                 }
+                lastTransform.parent = root;
+                lastTransform.position = endPosition;
+                lastTransform.rotation = rotation;
+                LineRenderer = lastTransform.gameObject.AddComponent<LineRenderer>();
 
-                newPoint.parent = root;
-                newPoint.position = endPosition;
-
-                LineRenderer lr = newPoint.gameObject.AddComponent<LineRenderer>();
-                lr.startColor = lineColor;
-                lr.endColor = lineColor;
-                lr.startWidth = lineWidth;
-                lr.endWidth = lineWidth;
+                LineRenderer.startColor = lineColor;
+                LineRenderer.endColor = lineColor;
+                LineRenderer.startWidth = lineWidth;
+                LineRenderer.endWidth = lineWidth;
+                var curve = new AnimationCurve();
+                curve.AddKey(0, lineWidth);
+                //curve.AddKey(1, lineWidth);
+                LineRenderer.widthCurve = curve;
                 if (DrawMaterial) {
-                    lr.material = DrawMaterial;
+                    LineRenderer.material = DrawMaterial;
                 }
-                lr.numCapVertices = 5;
-                lr.alignment = LineAlignment.TransformZ;
-
-                lr.useWorldSpace = true;
-
-                lr.SetPosition(0, lastDrawPoint.position);
-                lr.SetPosition(1, endPosition);                
-
-                return newPoint;
+                LineRenderer.numCapVertices = 5;
+                LineRenderer.alignment = LineAlignment.TransformZ;
+                LineRenderer.useWorldSpace = true;
+                LineRenderer.SetPosition(0, lastDrawPoint);
+                LineRenderer.SetPosition(1, endPosition);
             }
-
-            return null;
+            else {
+                if (LineRenderer != null) {
+                    LineRenderer.widthMultiplier = 1;
+                    LineRenderer.positionCount += 1;
+                    var curve = LineRenderer.widthCurve;
+                    curve.AddKey((LineRenderer.positionCount - 1) / 100, lineWidth);
+                    LineRenderer.widthCurve = curve;
+                    LineRenderer.SetPosition(LineRenderer.positionCount - 1, endPosition);
+                }
+            }
+            return endPosition;
         }
 
         void OnDrawGizmosSelected() {
