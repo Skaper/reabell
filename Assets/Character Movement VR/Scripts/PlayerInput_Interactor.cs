@@ -1,21 +1,23 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using BNG;
 using UnityEngine;
 using CMF;
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerInput_Interactor : MonoBehaviour
 {
-    public PlayerInput.HandSource hand;
+    public enum HandSource
+    {
+        Left,
+        Right
+    }
+    
+    public HandSource hand;
     public Rigidbody xrRigRigidbody;
     public PlayerClimb climbScript;
     public VelocitiesFromTransform velocities;
 
-    private PlayerInput InputSource;
-
-    private Transform MyTransform;
     public Rigidbody MyRigidbody { get; private set; }
-
-    private AdvancedWalkerController walkerController;
     public Vector3 XRRigTargetDelta
     {
         get
@@ -29,42 +31,69 @@ public class PlayerInput_Interactor : MonoBehaviour
         }
     }
 
-    public bool HoldingSomething { get { return (HeldObject != null); } }
-
-    private GameObject HeldObject = null;
-    private Interactable HeldObjectInteractable = null;
+    private GameObject HeldObject;
+    private Interactable HeldObjectInteractable;
     private GameObject TargetObject;
-    private bool waitingOnFirstRelease = false;
-    private ConfigurableJoint grabJoint;
-    private bool Climbing = false;
+    private bool waitingOnFirstRelease;
+    private bool Climbing;
     private Vector3 ClimbReference;
 
-    private Quaternion grabJointStartRotation;
 
-    // Start is called before the first frame update
+    #region InputVarabels
+
+    private float GripAxisValue_Left;
+    private float GripAxisValue_Right;
+    private float GripThreshold = 0.85f;
+    private bool GripValue_Left;
+    private bool GripValue_Right;
+
+    private InputBridge input;
+
+    #endregion
+
     void Awake()
     {
-        InputSource = gameObject.GetComponentInParent<PlayerReferences>().playerInput;
-        MyTransform = transform;
         MyRigidbody = GetComponent<Rigidbody>();
+        input = InputBridge.Instance;
     }
 
-    private void OnEnable()
+    private void Update()
     {
-        if (hand == PlayerInput.HandSource.Left)
-            InputSource.GripInputEvent_Left += HandleGrab;
-        else
-            InputSource.GripInputEvent_Right += HandleGrab;
+        UpdateInputs();
     }
 
-    private void OnDisable()
+    private void UpdateInputs()
     {
-        if (hand == PlayerInput.HandSource.Left)
-            InputSource.GripInputEvent_Left -= HandleGrab;
-        else
-            InputSource.GripInputEvent_Right -= HandleGrab;
-    }
+        if (hand == HandSource.Left)
+        {
+            if (GripAxisValue_Left != input.LeftGrip)
+            {
+                GripAxisValue_Left = input.LeftGrip;
+            }
+            bool newGripValueLeft = (GripAxisValue_Left > GripThreshold);
 
+            if (GripValue_Left != newGripValueLeft)
+            {
+                GripValue_Left = newGripValueLeft;
+                HandleGrab(GripValue_Left);
+            }
+        }
+        else if(hand == HandSource.Right)
+        {
+            if (GripAxisValue_Right != input.RightGrip)
+            {
+                GripAxisValue_Right = input.RightGrip;
+            }
+            
+            bool newGripValueRight = (GripAxisValue_Right > GripThreshold);
+            
+            if (GripValue_Right != newGripValueRight)
+            {
+                GripValue_Right = newGripValueRight;
+                HandleGrab(GripValue_Right);
+            }
+        }
+    }
     private void OnTriggerEnter(Collider other)
     {
         if (other.GetComponent<Interactable>() != null)
@@ -77,29 +106,6 @@ public class PlayerInput_Interactor : MonoBehaviour
             TargetObject = null;
     }
 
-    public bool TryGrab(GameObject ObjectToGrab)
-    {
-        Interactable ObjectToGrabInteractable = ObjectToGrab.GetComponent<Interactable>();
-
-        if (HeldObject != null || ObjectToGrab == null || ObjectToGrabInteractable == null || ObjectToGrabInteractable.type != Interactable.InteractableType.Grabable)
-            return false;
-
-        // yes, this is duplicated from HandleGrab. No good reason other than code cleanliness.  Necessary for public calls, and I'm not interested in reafactoring right now.
-        HeldObject = ObjectToGrab;
-        HeldObjectInteractable = HeldObject.GetComponent<Interactable>();
-
-        GrabObject(ObjectToGrab);
-        return true;
-    }
-
-    void GrabObject(GameObject ObjectToGrab)
-    {
-        Interactable ObjectToGrabInteractable = ObjectToGrab.GetComponent<Interactable>();
-        ObjectToGrabInteractable.Grab(this);
-        CreateJoint(ObjectToGrab);
-        waitingOnFirstRelease = ObjectToGrabInteractable.StickyGrab;
-    }
-
     // Entry into grabbing. value indicates state of button - true for starting a grab or false for ending a grab
     public void HandleGrab(bool value)
     {
@@ -109,14 +115,7 @@ public class PlayerInput_Interactor : MonoBehaviour
             HeldObject = TargetObject;
             HeldObjectInteractable = HeldObject.GetComponent<Interactable>();
 
-            if (HeldObjectInteractable.type == Interactable.InteractableType.JustEvents)
-                HeldObjectInteractable.Grab(this);
-            else if (HeldObjectInteractable.type == Interactable.InteractableType.Grabable
-                || HeldObjectInteractable.type == Interactable.InteractableType.JointManipulator)
-            {
-                GrabObject(HeldObject);
-            }
-            else if (climbScript != null
+            if (climbScript != null
                 && HeldObjectInteractable.type == Interactable.InteractableType.Climbable)
             {
                 climbScript.AddInfluencer(this);
@@ -142,27 +141,10 @@ public class PlayerInput_Interactor : MonoBehaviour
         {
             var tempObject = HeldObject;
 
-            if (HeldObjectInteractable.type == Interactable.InteractableType.Grabable)
-            {
-                if (grabJoint)
-                    DestroyJoint();
-
-                Vector3 RadiusVector = HeldObject.transform.position - MyTransform.position;
-                HeldObject.GetComponent<Rigidbody>().AddForce(velocities.Velocity + Vector3.Cross(velocities.AngularVelocity, RadiusVector), ForceMode.VelocityChange);
-                HeldObject.GetComponent<Rigidbody>().AddTorque(velocities.AngularVelocity / (1 + RadiusVector.magnitude), ForceMode.VelocityChange);
-            }
-            else if (HeldObjectInteractable.type == Interactable.InteractableType.Climbable)
+            if (HeldObjectInteractable.type == Interactable.InteractableType.Climbable)
             {
                 climbScript.RemoveInfluencer(this);
                 Climbing = false;
-            }
-            else if (HeldObjectInteractable.type == Interactable.InteractableType.JointManipulator)
-            {
-                if (grabJoint)
-                    DestroyJoint();
-
-                Vector3 RadiusVector = HeldObject.transform.position - MyTransform.position;
-                HeldObject.GetComponent<Rigidbody>().AddForce(velocities.Velocity + Vector3.Cross(velocities.AngularVelocity, RadiusVector), ForceMode.VelocityChange);
             }
 
             HeldObject = null;
@@ -171,65 +153,13 @@ public class PlayerInput_Interactor : MonoBehaviour
         }
     }
 
-    void CreateJoint(GameObject obj)
-    {
-        grabJoint = gameObject.AddComponent<ConfigurableJoint>();
-
-        // from fixedjoint
-        grabJoint.breakForce = 1500f;
-        grabJoint.connectedBody = obj.GetComponent<Rigidbody>();
-
-        // configurablejoint additions - make it behave like a fixed joint
-        grabJoint.xMotion = ConfigurableJointMotion.Locked;
-        grabJoint.yMotion = ConfigurableJointMotion.Locked;
-        grabJoint.zMotion = ConfigurableJointMotion.Locked;
-        grabJoint.angularXMotion = ConfigurableJointMotion.Locked;
-        grabJoint.angularYMotion = ConfigurableJointMotion.Locked;
-        grabJoint.angularZMotion = ConfigurableJointMotion.Locked;
-
-        if (!HeldObjectInteractable.RelativeAnchor)
-        {
-            grabJoint.autoConfigureConnectedAnchor = false;
-            grabJoint.connectedAnchor = Vector3.zero;
-            grabJoint.anchor = Vector3.zero;
-
-            grabJoint.angularXMotion = ConfigurableJointMotion.Free;
-            grabJoint.angularYMotion = ConfigurableJointMotion.Free;
-            grabJoint.angularZMotion = ConfigurableJointMotion.Free;
-
-            JointDrive drive = new JointDrive();
-            drive.positionSpring = 100f;
-            drive.positionDamper = 15f;
-            drive.maximumForce = Mathf.Infinity;
-            grabJoint.slerpDrive = drive;
-            grabJoint.rotationDriveMode = RotationDriveMode.Slerp;
-            grabJoint.configuredInWorldSpace = false;
-            grabJointStartRotation = MyRigidbody.rotation;
-            grabJoint.SetTargetRotationLocal(grabJoint.connectedBody.rotation, grabJointStartRotation);
-        }
-    }
-
     private void OnJointBreak(float breakForce)
     {
         ForceDrop();
     }
-
-    void DestroyJoint()
-    {
-        grabJoint.connectedBody = null;
-        Destroy(grabJoint);
-    }
-
+    
     public void ResetReference()
     {
         ClimbReference = (MyRigidbody.position - xrRigRigidbody.position);
-    }
-
-    public void SetGrabJointTargetRotation(Quaternion targetRotation)
-    {
-        //grabJoint.SetTargetRotationLocal(grabJoint.connectedBody.rotation, MyRigidbody.rotation);
-
-        //grabJoint.configuredInWorldSpace = false;
-        grabJoint.SetTargetRotationLocal(targetRotation, grabJointStartRotation);
     }
 }
