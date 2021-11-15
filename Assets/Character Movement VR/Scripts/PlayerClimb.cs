@@ -1,6 +1,4 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 using CMF;
 
 [RequireComponent(typeof(PlayerReferences))]
@@ -33,8 +31,13 @@ public class PlayerClimb : MonoBehaviour
         m_Rigidbody = GetComponent<PlayerReferences>().rigRigidbody;
         m_walker = GetComponent<PlayerReferences>().playerWalk;
         m_ClimbInfluencer = null;
-        //m_walker.EnableGravity();
         m_CollisionCorrection = Vector3.zero;
+        GravityColliderScript.BlockStatusChanged += OnBodyColliderHeightBlock;
+    }
+
+    private void OnBodyColliderHeightBlock(bool isBlock)
+    {
+        m_Rigidbody.isKinematic = isBlock;
     }
 
     public void AddInfluencer(PlayerInput_Interactor NewInfluencer)
@@ -46,9 +49,7 @@ public class PlayerClimb : MonoBehaviour
             GravityColliderScript.CollisionStatusChanged += HandleCollision;
         m_walker.DisableGravity();
         m_ClimbInfluencer = NewInfluencer;
-        //m_Rigidbody.useGravity = false;
         m_Rigidbody.velocity = Vector3.zero;
-        //m_Rigidbody.angularVelocity = Vector3.zero;
 
         ResetReferences();
     }
@@ -60,14 +61,13 @@ public class PlayerClimb : MonoBehaviour
         m_ClimbInfluencer = null;
         m_walker.EnableGravity();
         GravityColliderScript.CollisionStatusChanged -= HandleCollision;
-        //m_Rigidbody.useGravity = true;
         m_CollisionCorrection = Vector3.zero;
         m_Colliding = false;
         m_Rigidbody.AddForce(-3f * InfluencerToRemove.velocities.Velocity, ForceMode.VelocityChange); // fling
     }
 
     // Update is called once per frame
-    void Update()
+    void LateUpdate()
     {
         if (!m_Colliding)
         {
@@ -76,10 +76,14 @@ public class PlayerClimb : MonoBehaviour
 
         if (m_ClimbInfluencer != null)
         {
+            GravityColliderScript.BlockHeightChange();
             Vector3 TargetPositionDelta = m_ClimbInfluencer.XRRigTargetDelta;
 
             if (m_Colliding)
+            {
                 m_CollisionCorrection += m_LastKnownGoodPosition - m_BodyCollisionPosition;
+                Debug.Log("m_Colliding");
+            }
             else if (m_CollisionCorrection != Vector3.zero)
             {
                 m_CollisionCorrection -= m_CollisionCorrection.normalized * Mathf.Min(m_CorrectionRecoveryRate, m_CollisionCorrection.magnitude);
@@ -89,7 +93,11 @@ public class PlayerClimb : MonoBehaviour
                 m_ClimbXRRigReference
                 + m_CollisionCorrection
                 + TargetPositionDelta
-                );
+            );
+        }
+        else
+        {
+            GravityColliderScript.UnblockHeightChange();
         }
     }
 
