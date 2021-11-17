@@ -20,9 +20,11 @@ public class PlayerRotationProvider : LocomotionProvider
     public bool AllowKeyboardInputs = true;
 
     public Transform floorOffset;
-    float rotationAmount = 0;
 
-    float previousXInput;
+    public Transform MainCamera;
+    //float rotationAmountX = 0;
+    private Vector2 _rotationAmount;
+    private Vector2 _previousInput;
 
     // Start is called before the first frame update
     void Start()
@@ -33,24 +35,26 @@ public class PlayerRotationProvider : LocomotionProvider
     // Update is called once per frame
     void Update()
     {
-        float xAxis = GetAxisInput();
-        DoSnapRotation(xAxis);
-        previousXInput = xAxis;
+        var axis = GetAxisInput();
+        axis = new Vector2(axis.x, -axis.y);
+        DoSnapRotation(axis.x, _previousInput.x, system.xrRig.transform.up);
+        DoSnapRotation(axis.y, _previousInput.y, MainCamera.right);//system.xrRig.transform.right
+        _previousInput = axis;
     }
 
-    public virtual void DoSnapRotation(float xInput)
+    public virtual void DoSnapRotation(float xInput, float previousInput, Vector3 vector)
     {
 
         // Reset rotation amount before retrieving inputs
-        rotationAmount = 0;
+        var rotationAmount = 0f;
 
         // Snap Right
-        if (xInput >= SnapInputAmount && previousXInput < SnapInputAmount)
+        if (xInput >= SnapInputAmount && previousInput < SnapInputAmount)
         {
             rotationAmount += SnapRotationAmount;
         }
         // Snap Left
-        else if (xInput <= -SnapInputAmount && previousXInput > -SnapInputAmount)
+        else if (xInput <= -SnapInputAmount && previousInput > -SnapInputAmount)
         {
             rotationAmount -= SnapRotationAmount;
         }
@@ -72,34 +76,38 @@ public class PlayerRotationProvider : LocomotionProvider
 
         if (Mathf.Abs(rotationAmount) > 0)
         {
-            //Rotate(rotationAmount);
-            Turn(rotationAmount);
+            BeginLocomotion();
+            //system.xrRig.RotateAroundCameraUsingRigUp(angle.x);
+            system.xrRig.RotateAroundCameraPosition(vector, rotationAmount);
+            EndLocomotion();
+            //Turn(rotationAmountX);
         }
     }
 
-    private void Turn(float angle)
+    private void Turn(Vector2 angle)
     {
         BeginLocomotion();
-        system.xrRig.RotateAroundCameraUsingRigUp(angle);
+        system.xrRig.RotateAroundCameraUsingRigUp(angle.x);
+        system.xrRig.RotateAroundCameraPosition(system.xrRig.transform.right, angle.y);
         EndLocomotion();
     }
 
-    public virtual float GetAxisInput()
+    private Vector2 GetAxisInput()
     {
 
         // Use the largest, non-zero value we find in our input list
-        float lastVal = 0;
+        Vector2 lastVal = Vector2.zero;
 
         for (int i = 0; i < inputAxis.Count; i++)
         {
-            float axisVal = InputBridge.Instance.GetInputAxisValue(inputAxis[i]).x;
+            var axisVal = InputBridge.Instance.GetInputAxisValue(inputAxis[i]);
 
             // Always take this value if our last entry was 0. 
-            if (lastVal == 0)
+            if (lastVal == Vector2.zero)
             {
                 lastVal = axisVal;
             }
-            else if (axisVal != 0 && axisVal > lastVal)
+            else if (axisVal != Vector2.zero && axisVal.magnitude > lastVal.magnitude)
             {
                 lastVal = axisVal;
             }

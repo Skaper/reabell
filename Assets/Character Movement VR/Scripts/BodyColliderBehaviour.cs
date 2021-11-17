@@ -90,8 +90,7 @@ public class BodyColliderBehaviour : MonoBehaviour
             CapsuleCollider.center = new Vector3(0, -(CapsuleCollider.height / 2) + CapsuleCollider.radius, 0);
 
             CapsuleColliderTriger.height = Mathf.Lerp(0, finalHeight, (finalHeightTrigger / time));
-            CapsuleColliderTriger.center =
-                new Vector3(0, -(CapsuleColliderTriger.height / 2) + CapsuleColliderTriger.radius, 0);
+            CapsuleColliderTriger.center = new Vector3(0, -(CapsuleColliderTriger.height / 2) + CapsuleColliderTriger.radius, 0);
 
             elapsedTime += Time.deltaTime;
             yield return null;

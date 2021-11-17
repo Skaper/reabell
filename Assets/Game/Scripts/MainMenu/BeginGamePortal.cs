@@ -16,7 +16,7 @@ public class BeginGamePortal : MonoBehaviour
             PlayerPrefs.SetString("CurrentProgress", "Ep1SpaceBattle");
             PlayerPrefs.Save();
 
-            GameManager.PlayerReferences.levelChanger.FadeToLevel("Ep1SpaceBattle");
+            GameManager.PlayerReferences.LevelChanger.FadeToLevel("Ep1SpaceBattle");
             isOpen = true;
         }
     }

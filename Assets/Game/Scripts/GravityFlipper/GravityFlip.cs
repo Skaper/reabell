@@ -1,6 +1,5 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
+
 namespace GravityFlipper
 {
     public class GravityFlip : MonoBehaviour
@@ -12,9 +11,13 @@ namespace GravityFlipper
 
         public bool isExitGravityZero = true;
 
-        
+        private PlayerReferences _playerReferences;
         private bool playerChengedGravity;
-        
+
+        private void Awake()
+        {
+            _playerReferences = GameManager.PlayerReferences;
+        }
 
         void OnTriggerStay(Collider col)
         {
@@ -24,7 +27,10 @@ namespace GravityFlipper
                 {
                     return;
                 }
-                FlipGravity(GameManager.Player.GetComponent<PlayerReferences>().transform);
+
+                _playerReferences.PlayerWalkerController.Gravity = GetMaxGravity();
+                FlipGravity(_playerReferences.transform);
+                
                 playerChengedGravity = true;
             }
             else
@@ -67,6 +73,10 @@ namespace GravityFlipper
             {
                 playerChengedGravity = false;
             }
+        }
+        
+        private float GetMaxGravity(){
+            return Mathf.Max(Mathf.Max(gravity.x, gravity.y), gravity.z);
         }
 
     }

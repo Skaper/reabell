@@ -53,7 +53,7 @@ public class CrazyTurret : AITurret
                     {
                         if (hitTag.Equals("Player"))
                         {
-                            PlayerHealthController ph = GameManager.PlayerReferences.playerHealthController;
+                            PlayerHealthController ph = GameManager.PlayerReferences.PlayerHealthController;
 
                             if (ph != null)
                             {

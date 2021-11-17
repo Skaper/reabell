@@ -28,7 +28,7 @@ public class OxygenController : MonoBehaviour
         progressBar.maxValue = (int)stats.OxygenMax;
         progressBar.value = (int)stats.OxygenLevel;
         //TODO: УБРАТЬ ЗАВИСИМОСТЬ!
-        //GameManager.QuestManagerEp2.OnActionAirCompressor_off += OnActionAirCompressor_off;
+        GameManager.QuestManagerEp2.OnActionAirCompressor_off += OnActionAirCompressor_off;
         vignette = GameManager.PlayerCamera.GetComponent<VignetteAndChromaticAberration>();
         //playerHealth = GetComponent<Invector.PlayerHealthController>();
 

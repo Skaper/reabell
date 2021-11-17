@@ -19,7 +19,7 @@ public class EscapePodTrigger : MonoBehaviour
                 PlayerPrefs.Save();
             }
             
-            GameManager.PlayerReferences.levelChanger.FadeToLevel("Ep2CargoStation");
+            GameManager.PlayerReferences.LevelChanger.FadeToLevel("Ep2CargoStation");
             isOpen = true;
         }
     }

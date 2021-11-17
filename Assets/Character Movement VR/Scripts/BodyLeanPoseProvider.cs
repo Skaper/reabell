@@ -18,8 +18,8 @@ public class BodyLeanPoseProvider : BasePoseProvider
     private void Awake()
     {
         
-        m_PlayerClimb = playerRef.playerClimb;
-        m_PlayerWalk = playerRef.playerWalk;
+        m_PlayerClimb = playerRef.PlayerClimb;
+        m_PlayerWalk = playerRef.PlayerWalkerController;
     }
 
     private void Start()

@@ -24,7 +24,7 @@ public class XRRigFloorOffset : MonoBehaviour
         }
         else
         {
-            transform.localPosition = GameManager.PlayerReferences.characterOffset;
+            transform.localPosition = GameManager.PlayerReferences.CharacterOffset;
             Debug.Log("FAILURE: XRRigFloorOffset.TrySetRoomScale() on Application.platform= " + Application.platform + " and XRSettings.loadedDeviceName=" + XRSettings.loadedDeviceName);
         }
     }

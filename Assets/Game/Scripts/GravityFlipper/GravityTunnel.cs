@@ -56,7 +56,7 @@ namespace GravityFlipper
             if (col.CompareTag("Player/GravityCollider"))
             {
                 isPlayerInTonnel = true;
-                rigidbody = GameManager.Player.GetComponent<PlayerReferences>().rigRigidbody;
+                rigidbody = GameManager.Player.GetComponent<PlayerReferences>().RigRigidbody;
             }
             else
             {
@@ -75,7 +75,7 @@ namespace GravityFlipper
             if (col.CompareTag("Player/GravityCollider"))
             {
                 isPlayerInTonnel = false;
-                rigidbody = GameManager.Player.GetComponent<PlayerReferences>().rigRigidbody;
+                rigidbody = GameManager.Player.GetComponent<PlayerReferences>().RigRigidbody;
             }
             else
             {

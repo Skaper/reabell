@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace CMF
 {
@@ -50,7 +51,19 @@ namespace CMF
 		Vector3 savedMovementVelocity = Vector3.zero;
 
 		//Amount of downward gravity;
-		public float gravity = 30f;
+		public float Gravity
+		{
+			set
+			{
+				_gravity = value;
+				m_gravity = value;
+			}
+			get
+			{
+				return _gravity;
+			}
+		}
+		private float _gravity = 30f;
 		private float m_gravity;
 		[Tooltip("How fast the character will slide down steep slopes.")]
 		public float slideGravity = 5f;
@@ -81,7 +94,7 @@ namespace CMF
 		//Get references to all necessary components;
 		void Awake()
 		{
-			m_gravity = gravity;
+			m_gravity = _gravity;
 			m_slideGravity = slideGravity;
 			mover = GetComponent<Mover>();
 			tr = transform;
@@ -394,7 +407,7 @@ namespace CMF
 			}
 
 			//Add gravity to vertical momentum;
-			_verticalMomentum -= tr.up * gravity * Time.deltaTime;
+			_verticalMomentum -= tr.up * _gravity * Time.deltaTime;
 
 			//Remove any downward force if the controller is grounded;
 			if (currentControllerState == ControllerState.Grounded)
@@ -587,13 +600,13 @@ namespace CMF
 
 		public void DisableGravity()
 		{
-			gravity = 0f;
+			_gravity = 0f;
 			slideGravity = 0f;
 		}
 
 		public void EnableGravity()
 		{
-			gravity = m_gravity;
+			_gravity = m_gravity;
 			slideGravity = m_slideGravity;
 		}
 	}

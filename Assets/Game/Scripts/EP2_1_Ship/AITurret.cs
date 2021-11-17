@@ -89,7 +89,7 @@ public class AITurret : MonoBehaviour
                         {
                             
 
-                            PlayerHealthController ph = GameManager.PlayerReferences.playerHealthController;
+                            PlayerHealthController ph = GameManager.PlayerReferences.PlayerHealthController;
 
                             if (ph != null)
                             {

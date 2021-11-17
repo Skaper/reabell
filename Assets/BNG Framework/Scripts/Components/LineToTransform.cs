@@ -29,7 +29,7 @@ namespace BNG {
                 }
             }
 
-            if(line != null) {
+            if(line != null && ConnectTo != null) {
                 line.SetPosition(0, Vector3.zero);
                 line.SetPosition(1, transform.InverseTransformPoint(ConnectTo.position));
             }

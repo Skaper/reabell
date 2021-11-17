@@ -11,7 +11,7 @@ public class FallowPosition : MonoBehaviour
     public float yPosition;
     private void Awake()
     {
-        offset = GameManager.PlayerReferences.characterOffset;
+        offset = GameManager.PlayerReferences.CharacterOffset;
     }
     void Update()
     {

@@ -28,8 +28,8 @@ public class PlayerClimb : MonoBehaviour
 
     void Awake()
     {
-        m_Rigidbody = GetComponent<PlayerReferences>().rigRigidbody;
-        m_walker = GetComponent<PlayerReferences>().playerWalk;
+        m_Rigidbody = GetComponent<PlayerReferences>().RigRigidbody;
+        m_walker = GetComponent<PlayerReferences>().PlayerWalkerController;
         m_ClimbInfluencer = null;
         m_CollisionCorrection = Vector3.zero;
         GravityColliderScript.BlockStatusChanged += OnBodyColliderHeightBlock;

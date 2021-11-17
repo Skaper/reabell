@@ -33,7 +33,7 @@ public class PlayerRigidbodyRotate : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        playerRigidbody = GameManager.PlayerReferences.rigRigidbody;
+        playerRigidbody = GameManager.PlayerReferences.RigRigidbody;
         playerBody = GameManager.PlayerReferences.BodyCollider.transform;
 
         subsystems = new List<XRInputSubsystem>();
