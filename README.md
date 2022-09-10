@@ -1,4 +1,5 @@
-# reAbell - VR Space action game
+VR Space action game
+# reAbell (Alpha)
 The game is compatible with Oculus Quest 2 and PCVR.
 
 Game features:
